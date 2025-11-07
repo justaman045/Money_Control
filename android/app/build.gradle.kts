@@ -9,13 +9,6 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val keystorePropertiesFile = file("android/key.properties")
-val keystoreProperties = java.util.Properties()
-
-if (keystorePropertiesFile.exists()) {
-    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
-}
-
 android {
     namespace = "app.vercel.justaman045.money_control"
     compileSdk = flutter.compileSdkVersion
@@ -41,10 +34,15 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as? String ?: ""
-            keyPassword = keystoreProperties["keyPassword"] as? String ?: ""
-            storeFile = keystoreProperties["storeFile"]?.toString()?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as? String ?: ""
+            val keyStorePath = System.getenv("KEYSTORE_PATH") ?: "android/upload-keystore.jks"
+            val keyStorePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            val keyAlias = System.getenv("KEY_ALIAS") ?: ""
+            val keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+
+            storeFile = if (keyStorePath.isNotEmpty()) file(keyStorePath) else null
+            storePassword = keyStorePassword
+            this.keyAlias = keyAlias
+            this.keyPassword = keyPassword
         }
     }
 

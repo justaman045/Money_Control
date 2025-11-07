@@ -9,8 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v5
 
       - name: Setup Flutter SDK
@@ -24,21 +25,19 @@ jobs:
       - name: Decode keystore from secret
         run: echo "${{ secrets.UPLOAD_KEYSTORE }}" | base64 -d > android/upload-keystore.jks
 
-      - name: Generate key.properties with relative path
-        run: |
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=upload-keystore.jks" >> android/key.properties
-
-      - name: Optionally add google-services.json
+      - name: Add google-services.json from secret
         run: |
           echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
 
       - name: Make gradlew executable
-        run: chmod +x android/gradlew
+        run: chmod +x gradlew
 
-      - name: Build APK
+      - name: Build APK with signing
+        env:
+          KEYSTORE_PATH: android/upload-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Upload APK artifact
