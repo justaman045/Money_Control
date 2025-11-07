@@ -14,3 +14,18 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Downloads
+
+### Latest APK Build
+
+Get the latest built APK from the [Releases](../../releases) page.
+
+**Direct Download:**
+- [app-release.apk](../../releases/download/v1/app-release.apk) - Latest build
+
+**How to Install:**
+1. Download the APK file from the releases page
+2. Transfer to your Android device
+3. Open file manager and tap the APK to install
+4. Grant permissions when prompted
