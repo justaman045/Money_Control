@@ -1,7 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
 
-
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
@@ -34,15 +33,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val keyStorePath = System.getenv("KEYSTORE_PATH") ?: "android/upload-keystore.jks"
-            val keyStorePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            val keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            val keyPassword = System.getenv("KEY_PASSWORD") ?: ""
-
-            storeFile = if (keyStorePath.isNotEmpty()) rootProject.file(keyStorePath) else null
-            storePassword = keyStorePassword
-            this.keyAlias = keyAlias
-            this.keyPassword = keyPassword
+            storeFile = file("../upload-keystore.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
         }
     }
 
