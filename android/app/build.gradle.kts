@@ -1,7 +1,5 @@
 import java.util.Properties
 import java.io.FileInputStream
-import java.io.FileInputStream
-import java.util.Properties
 
 
 plugins {
@@ -17,11 +15,12 @@ plugins {
 //val keystoreProperties = Properties()
 //val keystorePropertiesFile = file("android/key.properties")
 
-val props = Properties()
-val propsFile = file("android/key.properties")
-if (propsFile.exists()) {
-    props.load(FileInputStream(propsFile))
+val keystoreProperties = java.util.Properties()
+val keystorePropertiesFile = file("android/key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
 }
+
 
 
 android {
