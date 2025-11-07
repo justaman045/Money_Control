@@ -8,6 +8,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystoreProperties = Properties()
+val keystorePropertiesFile = file("../key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "app.vercel.justaman045.money_control"
     compileSdk = flutter.compileSdkVersion
@@ -33,10 +39,27 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../upload-keystore.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            // Try to get from key.properties file first (local), then from env vars (CI)
+            val storeFilePath = keystoreProperties["storeFile"] as? String
+                ?: System.getenv("KEYSTORE_PATH")
+                ?: "upload-keystore.jks"
+
+            val storePass = keystoreProperties["storePassword"] as? String
+                ?: System.getenv("KEYSTORE_PASSWORD")
+                ?: ""
+
+            val keyAlias = keystoreProperties["keyAlias"] as? String
+                ?: System.getenv("KEY_ALIAS")
+                ?: ""
+
+            val keyPass = keystoreProperties["keyPassword"] as? String
+                ?: System.getenv("KEY_PASSWORD")
+                ?: ""
+
+            storeFile = file(storeFilePath)
+            storePassword = storePass
+            this.keyAlias = keyAlias
+            keyPassword = keyPass
         }
     }
 
