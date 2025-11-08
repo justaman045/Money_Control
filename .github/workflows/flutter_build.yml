@@ -51,11 +51,36 @@ jobs:
       - name: Create GitHub Release and Upload APK
         if: success()
         uses: softprops/action-gh-release@v2
+        id: create_release
         with:
           files: build/app/outputs/flutter-apk/app-release.apk
           tag_name: v1.0.${{ github.run_number }}
           body: |
             Built on: ${{ github.event.head_commit.timestamp }}
             Commit: ${{ github.event.head_commit.message }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README with latest APK link
+        if: success()
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/app-release.apk"
+
+          # Replace existing APK download link or append if none found
+          if grep -q "app-release.apk" README.md; then
+            sed -i "s|https://github.com/.*/releases/download/v[0-9.]*/app-release.apk|$DOWNLOAD_URL|" README.md
+          else
+            echo -e "\n## Latest APK\n[Download latest APK]($DOWNLOAD_URL)" >> README.md
+          fi
+
+      - name: Commit updated README
+        if: success()
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add README.md
+          git commit -m "Update README with latest APK download link for ${{ github.run_number }}" || echo "No changes to commit"
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
