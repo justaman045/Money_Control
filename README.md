@@ -75,7 +75,7 @@ This project is a Flutter application for personal finance management.
 Get the latest built APK from the [Releases](../../releases) page.
 
 **Direct Download:**
-- [app-release.apk](https://github.com/justaman045/Money_Control/releases/download/v1.0.30/app-release.apk) - Latest build
+- [app-release.apk](https://github.com/justaman045/Money_Control/releases/download/v1.0.52/app-release.apk) - Latest build
 
 **How to Install:**
 1. Download the APK file from the releases page
