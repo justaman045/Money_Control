@@ -10,6 +10,7 @@ import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Services/error_handler.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:money_control/Components/responsive_form_row.dart';
+import 'package:money_control/Screens/repayment_screen.dart';
 
 class AddLentMoneyScreen extends StatefulWidget {
   final LentMoneyModel? existingEntry;
@@ -76,6 +77,7 @@ class _AddLentMoneyScreenState extends State<AddLentMoneyScreen> {
         type: _selectedType,
         isSettled: widget.existingEntry!.isSettled,
         createdAt: widget.existingEntry!.createdAt,
+        repayments: widget.existingEntry!.repayments,
       );
     } else {
       success = await _controller.addEntry(
@@ -137,6 +139,10 @@ class _AddLentMoneyScreenState extends State<AddLentMoneyScreen> {
               _buildTypeSelector(context),
               SizedBox(height: 24.h),
               _buildDetailsForm(context),
+              if (widget.existingEntry != null) ...[
+                SizedBox(height: 24.h),
+                _buildRepaymentHistory(context),
+              ],
               SizedBox(height: 32.h),
               _buildSaveButton(),
             ],
@@ -304,6 +310,162 @@ class _AddLentMoneyScreenState extends State<AddLentMoneyScreen> {
         SizedBox(width: 16.w),
         Expanded(child: child),
       ],
+    );
+  }
+
+  Widget _buildRepaymentHistory(BuildContext context) {
+    final theme = Theme.of(context);
+    final entryId = widget.existingEntry!.id;
+    final currency = _currencyController.currencyCode.value;
+    return GlassContainer(
+      padding: EdgeInsets.all(20.w),
+      borderRadius: BorderRadius.circular(24.r),
+      child: Obx(() {
+        final live = _controller.entries.firstWhereOrNull(
+          (e) => e.id == entryId,
+        );
+        final repayments = live?.repayments ?? widget.existingEntry!.repayments;
+        final repaid = repayments.fold(0.0, (s, r) => s + r.amount);
+        final isReceivable = (live?.type ?? widget.existingEntry!.type) == 'lent';
+        final actionColor =
+            isReceivable ? Colors.greenAccent : Colors.orangeAccent;
+        final actionLabel = isReceivable ? "Receive" : "Repay";
+        final actionIcon =
+            isReceivable ? Icons.call_received : Icons.currency_rupee;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Repayment History",
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "${NumberFormat.simpleCurrency(name: currency).format(repaid)} repaid",
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.teal,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            if (repayments.isEmpty)
+              Text(
+                "No repayments recorded yet.",
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              )
+            else
+              for (var i = 0; i < repayments.length; i++) ...[
+                _buildRepaymentRow(theme, entryId, repayments[i], i),
+                if (i < repayments.length - 1)
+                  Divider(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.1),
+                    height: 1,
+                  ),
+              ],
+            if (!(live?.isSettled ?? widget.existingEntry!.isSettled)) ...[
+              SizedBox(height: 16.h),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Get.to(
+                    () => RepaymentScreen(entry: widget.existingEntry!),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: actionColor.withValues(alpha: 0.15),
+                    foregroundColor: actionColor,
+                    side: BorderSide(color: actionColor.withValues(alpha: 0.3)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                  ),
+                  icon: Icon(actionIcon, size: 18.sp),
+                  label: Text(
+                    actionLabel,
+                    style: TextStyle(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _buildRepaymentRow(
+    ThemeData theme,
+    String entryId,
+    LentRepayment repayment,
+    int index,
+  ) {
+    final currency = _currencyController.currencyCode.value;
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8.h),
+      child: Row(
+        children: [
+          Icon(Icons.currency_rupee, size: 18.sp, color: Colors.teal),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  NumberFormat.simpleCurrency(
+                    name: currency,
+                  ).format(repayment.amount),
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  DateFormat('MMM dd, yyyy').format(repayment.date),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                if (repayment.note.isNotEmpty) ...[
+                  SizedBox(height: 2.h),
+                  Text(
+                    repayment.note,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline,
+              color: Colors.redAccent,
+              size: 20,
+            ),
+            onPressed: () => _controller.deleteRepayment(entryId, index),
+            tooltip: "Delete repayment",
+          ),
+        ],
+      ),
     );
   }
 

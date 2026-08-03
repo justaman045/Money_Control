@@ -298,13 +298,19 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
           CircleAvatar(
             radius: 30.r,
             backgroundColor: payment.isActive
-                ? const Color(0xFF6C63FF).withValues(alpha: 0.1)
+                ? (_isPending(payment)
+                      ? Colors.orange.withValues(alpha: 0.12)
+                      : const Color(0xFF6C63FF).withValues(alpha: 0.1))
                 : Colors.grey.withValues(alpha: 0.1),
             child: Icon(
               payment.isActive
-                  ? Icons.receipt_long_rounded
+                  ? (_isPending(payment)
+                        ? Icons.pending_actions_rounded
+                        : Icons.receipt_long_rounded)
                   : Icons.pause_rounded,
-              color: payment.isActive ? const Color(0xFF6C63FF) : Colors.grey,
+              color: payment.isActive
+                  ? (_isPending(payment) ? Colors.orange : const Color(0xFF6C63FF))
+                  : Colors.grey,
               size: 30.sp,
             ),
           ),
@@ -326,24 +332,34 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
               fontWeight: FontWeight.w500,
             ),
           ),
-          if (!payment.isActive)
+          if (!payment.isActive || _isPending(payment) || payment.autoPay)
             Padding(
               padding: EdgeInsets.only(top: 8.h),
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.1),
+                  color: payment.isActive && !_isPending(payment)
+                      ? const Color(0xFF00B8D4).withValues(alpha: 0.12)
+                      : Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12.r),
                   border: Border.all(
-                    color: Colors.orange.withValues(alpha: 0.3),
+                    color: payment.isActive && !_isPending(payment)
+                        ? const Color(0xFF00B8D4).withValues(alpha: 0.35)
+                        : Colors.orange.withValues(alpha: 0.3),
                   ),
                 ),
                 child: Text(
-                  "PAUSED",
+                  !payment.isActive
+                      ? "PAUSED"
+                      : (_isPending(payment)
+                            ? "PENDING — due ${DateFormat('MMM dd, yyyy').format(payment.nextDueDate)}"
+                            : "AUTO-PAY ON"),
                   style: TextStyle(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.bold,
-                    color: Colors.orange,
+                    color: payment.isActive && !_isPending(payment)
+                        ? const Color(0xFF00B8D4)
+                        : Colors.orange,
                   ),
                 ),
               ),
@@ -362,6 +378,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                     : "Paused",
                 textColor,
                 isHighlight: payment.isActive,
+                highlightColor: _isPending(payment) ? Colors.redAccent : null,
               ),
             ],
           ),
@@ -375,6 +392,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     String value,
     Color textColor, {
     bool isHighlight = false,
+    Color? highlightColor,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,12 +410,19 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
           style: TextStyle(
             fontSize: 14.sp,
             fontWeight: FontWeight.w600,
-            color: isHighlight ? const Color(0xFF6C63FF) : textColor,
+            color: isHighlight
+                ? (highlightColor ?? const Color(0xFF6C63FF))
+                : textColor,
           ),
         ),
       ],
     );
   }
+
+  bool _isPending(RecurringPayment payment) =>
+      payment.isActive &&
+      !payment.autoPay &&
+      !payment.nextDueDate.isAfter(DateTime.now());
 
   Widget _buildActionButtons(
     bool isDark,

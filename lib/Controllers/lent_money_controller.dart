@@ -62,7 +62,7 @@ class LentMoneyController extends GetxController {
     double total = 0.0;
     for (var entry in entries) {
       if (!entry.isSettled && entry.type == 'lent') {
-        total += entry.amount;
+        total += entry.remainingAmount;
       }
     }
     return total;
@@ -72,7 +72,7 @@ class LentMoneyController extends GetxController {
     double total = 0.0;
     for (var entry in entries) {
       if (!entry.isSettled && entry.type == 'borrowed') {
-        total += entry.amount;
+        total += entry.remainingAmount;
       }
     }
     return total;
@@ -141,12 +141,19 @@ class LentMoneyController extends GetxController {
     required String type,
     required bool isSettled,
     required DateTime? createdAt,
+    List<LentRepayment> repayments = const [],
   }) async {
     if (isSaving.value) return false;
     isSaving.value = true;
 
+    final repaid = repayments.fold(0.0, (acc, r) => acc + r.amount);
     if (amount <= 0 || friendName.isEmpty) {
       ErrorHandler.showError("Invalid details");
+      isSaving.value = false;
+      return false;
+    }
+    if (amount < repaid) {
+      ErrorHandler.showError("Amount cannot be less than already repaid");
       isSaving.value = false;
       return false;
     }
@@ -160,6 +167,7 @@ class LentMoneyController extends GetxController {
       isSettled: isSettled,
       type: type,
       createdAt: createdAt,
+      repayments: repayments,
     );
 
     try {
@@ -186,6 +194,7 @@ class LentMoneyController extends GetxController {
         isSettled: true,
         type: entry.type,
         createdAt: entry.createdAt,
+        repayments: entry.repayments,
       );
       await _repository.updateEntry(updatedEntry);
       LocalCacheService.invalidate(_cacheKey);
@@ -193,6 +202,104 @@ class LentMoneyController extends GetxController {
       return true;
     } catch (e) {
       ErrorHandler.showError("Failed to mark as settled: $e");
+      return false;
+    }
+  }
+
+  Future<bool> addRepayment({
+    required String entryId,
+    required double amount,
+    required DateTime date,
+    String note = '',
+  }) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
+
+    final entry = entries.firstWhereOrNull((e) => e.id == entryId);
+    if (entry == null) {
+      ErrorHandler.showError("Entry not found");
+      isSaving.value = false;
+      return false;
+    }
+    if (entry.isSettled) {
+      ErrorHandler.showError("Entry is already settled");
+      isSaving.value = false;
+      return false;
+    }
+    if (amount <= 0) {
+      ErrorHandler.showError("Enter a valid repayment amount");
+      isSaving.value = false;
+      return false;
+    }
+    if (amount > entry.remainingAmount + 0.001) {
+      ErrorHandler.showError("Repayment exceeds remaining amount");
+      isSaving.value = false;
+      return false;
+    }
+
+    final repayments = [...entry.repayments, LentRepayment(amount: amount, date: date, note: note)];
+    final repaid = repayments.fold(0.0, (acc, r) => acc + r.amount);
+
+    final updatedEntry = LentMoneyModel(
+      id: entry.id,
+      friendName: entry.friendName,
+      amount: entry.amount,
+      note: entry.note,
+      dateLent: entry.dateLent,
+      isSettled: repaid >= entry.amount - 0.001,
+      type: entry.type,
+      createdAt: entry.createdAt,
+      repayments: repayments,
+    );
+
+    try {
+      await _repository.updateEntry(updatedEntry);
+      LocalCacheService.invalidate(_cacheKey);
+      _fetchFromFirestore();
+      isSaving.value = false;
+      return true;
+    } catch (e) {
+      ErrorHandler.showError("Failed to record repayment: $e");
+      isSaving.value = false;
+      return false;
+    }
+  }
+
+  Future<bool> deleteRepayment(String entryId, int index) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
+
+    final entry = entries.firstWhereOrNull((e) => e.id == entryId);
+    if (entry == null || index < 0 || index >= entry.repayments.length) {
+      ErrorHandler.showError("Repayment not found");
+      isSaving.value = false;
+      return false;
+    }
+
+    final repayments = [...entry.repayments]..removeAt(index);
+    final repaid = repayments.fold(0.0, (acc, r) => acc + r.amount);
+
+    final updatedEntry = LentMoneyModel(
+      id: entry.id,
+      friendName: entry.friendName,
+      amount: entry.amount,
+      note: entry.note,
+      dateLent: entry.dateLent,
+      isSettled: repaid >= entry.amount - 0.001,
+      type: entry.type,
+      createdAt: entry.createdAt,
+      repayments: repayments,
+    );
+
+    try {
+      await _repository.updateEntry(updatedEntry);
+      LocalCacheService.invalidate(_cacheKey);
+      _fetchFromFirestore();
+      isSaving.value = false;
+      return true;
+    } catch (e) {
+      ErrorHandler.showError("Failed to delete repayment: $e");
+      isSaving.value = false;
       return false;
     }
   }

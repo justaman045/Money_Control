@@ -119,6 +119,7 @@ class LoanController extends GetxController {
           startDate: startDate,
           nextDueDate: startDate,
           isActive: true,
+          autoPay: false,
         );
         await _recurringService.addPayment(payment);
         // Link recurring ID back to loan

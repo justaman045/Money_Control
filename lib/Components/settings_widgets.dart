@@ -43,6 +43,7 @@ class SectionDivider extends StatelessWidget {
 class SettingsTile extends StatelessWidget {
   final IconData? icon;
   final String title;
+  final String? subtitle;
   final VoidCallback? onTap;
   final Color? iconColor;
   final Color? textColor;
@@ -52,6 +53,7 @@ class SettingsTile extends StatelessWidget {
     super.key,
     this.icon,
     required this.title,
+    this.subtitle,
     this.onTap,
     this.iconColor,
     this.textColor,
@@ -94,13 +96,28 @@ class SettingsTile extends StatelessWidget {
                   SizedBox(width: 16.w),
                 ],
                 Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: textColor ?? (isDark ? Colors.white : AppColors.lightTextPrimary),
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: textColor ?? (isDark ? Colors.white : AppColors.lightTextPrimary),
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        SizedBox(height: 3.h),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            color: isDark ? Colors.white54 : AppColors.lightTextSecondary,
+                            fontSize: 12.sp,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 if (trailing != null)

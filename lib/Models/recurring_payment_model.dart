@@ -12,6 +12,7 @@ class RecurringPayment {
   final DateTime startDate;
   final DateTime nextDueDate;
   final bool isActive;
+  final bool autoPay;
 
   RecurringPayment({
     required this.id,
@@ -23,6 +24,7 @@ class RecurringPayment {
     required this.startDate,
     required this.nextDueDate,
     required this.isActive,
+    this.autoPay = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -35,6 +37,7 @@ class RecurringPayment {
       'startDate': Timestamp.fromDate(startDate),
       'nextDueDate': Timestamp.fromDate(nextDueDate),
       'isActive': isActive,
+      'autoPay': autoPay,
     };
   }
 
@@ -52,6 +55,7 @@ class RecurringPayment {
       startDate: ((map['startDate'] as dynamic)?.toDate()) ?? DateTime.now(),
       nextDueDate: ((map['nextDueDate'] as dynamic)?.toDate()) ?? DateTime.now(),
       isActive: map['isActive'] ?? true,
+      autoPay: map['autoPay'] ?? true,
     );
   }
 

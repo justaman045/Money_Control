@@ -16,6 +16,7 @@ class CategoryService {
 
   // Records a merchant→category correction. After [autoPromoteThreshold]+
   // corrections for the same merchant the rule is promoted automatically.
+  // The correction is also synced to Firestore so it applies on every device.
   static Future<void> recordCorrection(
     String merchant,
     String category,
@@ -40,8 +41,21 @@ class CategoryService {
     // Live-update the SMS parser's in-memory cache so corrections take effect immediately.
     SmsService.addCorrection(merchant, category);
 
-    // Auto-promote to keyword rule when threshold is reached
-    if (newCount >= autoPromoteThreshold) {
+    // Sync to Firestore (source of truth for cross-device learning).
+    int? cloudCount;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user?.email != null) {
+      cloudCount = await CategoryRulesRepository()
+          .saveUserCorrection(user!.email!, key, category);
+    }
+
+    // Auto-promote to keyword rule when the effective (max of local + cloud)
+    // count reaches the threshold — even if the other devices did some of the
+    // corrections.
+    final effectiveCount = cloudCount != null
+        ? (newCount > cloudCount ? newCount : cloudCount)
+        : newCount;
+    if (effectiveCount >= autoPromoteThreshold) {
       await _autoPromoteToRule(merchant, category);
     }
   }
@@ -102,15 +116,21 @@ class CategoryService {
   }
 
   // Removes a pending suggestion (after it becomes a rule or is dismissed).
+  // Also removes it from the synced Firestore corrections.
   static Future<void> removeSuggestion(String merchant) async {
     final key = merchant.trim().toLowerCase();
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(correctionsKey);
-    if (raw == null) return;
-    final decoded = jsonDecode(raw);
-    final map = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
-    map.remove(key);
-    await prefs.setString(correctionsKey, jsonEncode(map));
+    if (raw != null) {
+      final decoded = jsonDecode(raw);
+      final map = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+      map.remove(key);
+      await prefs.setString(correctionsKey, jsonEncode(map));
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user?.email != null) {
+      await CategoryRulesRepository().removeUserCorrection(user!.email!, key);
+    }
   }
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

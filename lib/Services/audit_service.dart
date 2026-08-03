@@ -74,6 +74,9 @@ class AuditService {
     var counter = 0;
     for (final payment in payments) {
       if (!payment.isActive) continue;
+      // Non-auto-pay bills are "pending" by design until the user marks them
+      // paid manually — not orphans.
+      if (!payment.autoPay) continue;
       if (payment.nextDueDate.isAfter(now)) continue;
       final hasTx = transactions.any((tx) =>
           tx.recurringPaymentId == payment.id &&

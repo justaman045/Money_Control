@@ -33,8 +33,12 @@ class SmsService {
   final SmsQuery? _query = kIsWeb ? null : SmsQuery();
   final CategoryRulesRepository _rulesRepository = CategoryRulesRepository();
 
-  static Map<String, List<String>> _currentRules = {};
+  static Map<String, List<String>> _currentRules = Map.of(defaultRules);
   static bool _rulesLoaded = false;
+
+  /// Exposes the currently merged rule set (defaults + user + learned rules)
+  /// so background workers can parse with the same rules as the foreground.
+  static Map<String, List<String>> get currentRules => _currentRules;
 
   // Merchant → category corrections learned from user edits (loaded on initRules)
   static Map<String, String> _correctionCache = {};
@@ -60,7 +64,7 @@ class SmsService {
   /// Suggest a category for a merchant name (used by CSV import).
   /// Loads caches if needed, then runs through keyword rules → correction cache → history cache.
   static Future<String> suggestCategory(String merchant) async {
-    if (!_correctionCacheLoaded) await loadCorrectionCache();
+    await loadCorrectionCache(force: true);
     if (!_historyLoaded) await buildHistoryCache();
     return _getCategoryStatic(merchant, '', _currentRules);
   }
@@ -222,36 +226,68 @@ class SmsService {
     String body,
     Map<String, List<String>> rules,
   ) {
+    return categorizeWith(
+      merchant: merchant,
+      body: body,
+      rules: rules,
+      corrections: _correctionCache,
+      history: _historyCache,
+    );
+  }
+
+  /// Pure, testable category resolution. Priority:
+  ///   1. User's explicit merchant→category corrections (exact, then substring)
+  ///   2. History learned from the user's past transactions (exact, then substring)
+  ///   3. Keyword rules — merchant name only when the merchant is known;
+  ///      full body scan only as a fallback when the merchant is unknown.
+  ///   4. 'Uncategorized'
+  static String categorizeWith({
+    required String merchant,
+    required String body,
+    Map<String, List<String>> rules = defaultRules,
+    Map<String, String> corrections = const {},
+    Map<String, String> history = const {},
+  }) {
     final lowerBody = body.toLowerCase();
-    final lowerMerchant = merchant.toLowerCase();
+    final lowerMerchant = merchant.toLowerCase().trim();
+
+    // 1. User corrections win over everything.
+    final corrected = _matchExactOrSubstring(lowerMerchant, corrections);
+    if (corrected != null) return corrected;
+
+    // 2. Learned history beats generic keyword rules.
+    final historyCategory = _matchExactOrSubstring(lowerMerchant, history);
+    if (historyCategory != null) return historyCategory;
+
+    // 3. Keyword rules.
+    final isUnknownMerchant = lowerMerchant == 'unknown';
     for (final entry in rules.entries) {
       for (final keyword in entry.value) {
-        if (lowerMerchant.contains(keyword.toLowerCase()) ||
-            lowerBody.contains(keyword.toLowerCase())) {
-          return entry.key;
+        final kw = keyword.toLowerCase();
+        if (isUnknownMerchant) {
+          if (lowerBody.contains(kw)) return entry.key;
+        } else {
+          if (lowerMerchant.contains(kw)) return entry.key;
         }
       }
     }
-    // Fall back to user-correction cache
-    if (_correctionCache.containsKey(lowerMerchant)) {
-      return _correctionCache[lowerMerchant]!;
-    }
-    // Fall back to history-based category
-    final historyCategory = _getCategoryFromHistory(merchant);
-    if (historyCategory != null) return historyCategory;
+
     return 'Uncategorized';
   }
 
-  static String? _getCategoryFromHistory(String merchant) {
-    if (!_historyLoaded || _historyCache.isEmpty) return null;
-    final lowerMerchant = merchant.toLowerCase().trim();
-    // Exact match
-    if (_historyCache.containsKey(lowerMerchant)) return _historyCache[lowerMerchant]!;
-    // Substring match: check if any cached merchant is contained in or contains the query
-    for (final entry in _historyCache.entries) {
-      final cachedMerchant = entry.key;
-      if (lowerMerchant.contains(cachedMerchant) ||
-          cachedMerchant.contains(lowerMerchant)) {
+  /// Exact merchant match first, then substring containment between keys.
+  /// Substring fallback requires both sides to be ≥4 chars to avoid
+  /// short-key false positives (e.g. "my" matching "myntra").
+  static String? _matchExactOrSubstring(
+    String lowerMerchant,
+    Map<String, String> map,
+  ) {
+    if (lowerMerchant.isEmpty || map.isEmpty) return null;
+    if (map.containsKey(lowerMerchant)) return map[lowerMerchant]!;
+    for (final entry in map.entries) {
+      final key = entry.key.toLowerCase().trim();
+      if (key.length < 4 || lowerMerchant.length < 4) continue;
+      if (lowerMerchant.contains(key) || key.contains(lowerMerchant)) {
         return entry.value;
       }
     }
@@ -468,14 +504,50 @@ class SmsService {
 
   static const String _userRulesKey = 'user_custom_sms_rules';
 
+  /// Pure merge of local and remote manual keyword rule maps (remote wins;
+  /// keywords are unioned per category so cross-device edits accumulate).
+  static Map<String, List<String>> mergeCustomRules(
+    Map<String, List<String>> local,
+    Map<String, List<String>> remote,
+  ) {
+    final merged = <String, List<String>>{};
+    local.forEach((k, v) {
+      merged[k] = [...v];
+    });
+    remote.forEach((k, v) {
+      final current = merged[k] ?? <String>[];
+      for (final kw in v) {
+        if (!current.contains(kw)) current.add(kw);
+      }
+      merged[k] = current;
+    });
+    return merged;
+  }
+
   static Future<Map<String, List<String>>> loadUserCustomRules() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final json = prefs.getString(_userRulesKey);
-      if (json == null) return {};
-      final decoded = jsonDecode(json);
-      if (decoded is! Map<String, dynamic>) return {};
-      return decoded.map((k, v) => MapEntry(k, List<String>.from(v is List ? v : <String>[])));
+      final local = <String, List<String>>{};
+      if (json != null) {
+        final decoded = jsonDecode(json);
+        if (decoded is Map<String, dynamic>) {
+          decoded.forEach((k, v) {
+            local[k] = List<String>.from(v is List ? v : <String>[]);
+          });
+        }
+      }
+      // Merge synced rules from Firestore (source of truth).
+      final user = FirebaseAuth.instance.currentUser;
+      if (user?.email != null) {
+        final remote = await CategoryRulesRepository().fetchUserCustomRules(
+          user!.email!,
+        );
+        final merged = mergeCustomRules(local, remote);
+        await prefs.setString(_userRulesKey, jsonEncode(merged));
+        return merged;
+      }
+      return local;
     } catch (e) {
       debugPrint('Custom rules load error: $e');
       return {};
@@ -485,24 +557,60 @@ class SmsService {
   static Future<void> saveUserCustomRules(Map<String, List<String>> rules) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_userRulesKey, jsonEncode(rules));
+    // Push to Firestore so the same rules apply on every device.
+    final user = FirebaseAuth.instance.currentUser;
+    if (user?.email != null) {
+      try {
+        await CategoryRulesRepository().saveUserCustomRules(user!.email!, rules);
+      } catch (e) {
+        debugPrint('Custom rules sync error: $e');
+      }
+    }
   }
 
-  /// Load merchant→category corrections from local storage (all counts).
+  /// Pure merge of local and remote merchant→category correction maps
+  /// (remote wins per merchant; counts are preserved from the winning side).
+  static Map<String, dynamic> mergeCorrections(
+    Map<String, dynamic> local,
+    Map<String, dynamic> remote,
+  ) {
+    final merged = Map<String, dynamic>.from(local);
+    remote.forEach((k, v) {
+      merged[k] = v;
+    });
+    return merged;
+  }
+
+  /// Load merchant→category corrections from local storage merged with the
+  /// cross-device copy in Firestore (Firestore wins per merchant).
   /// Safe to call from anywhere (static, no instance needed).
-  static Future<void> loadCorrectionCache() async {
-    if (_correctionCacheLoaded) return;
+  static Future<void> loadCorrectionCache({bool force = false}) async {
+    if (_correctionCacheLoaded && !force) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString('category_corrections');
-      if (raw != null) {
-        final rawDecoded = jsonDecode(raw);
-        if (rawDecoded is! Map) return;
-        final map = Map<String, dynamic>.from(rawDecoded);
-        _correctionCache = {
-          for (final entry in map.entries)
-            entry.key.toLowerCase(): (entry.value as Map)['category'] as String,
-        };
+      final local = raw != null && jsonDecode(raw) is Map
+          ? Map<String, dynamic>.from(jsonDecode(raw))
+          : <String, dynamic>{};
+
+      // Merge synced corrections from Firestore (source of truth).
+      final user = FirebaseAuth.instance.currentUser;
+      Map<String, dynamic> merged = local;
+      if (user?.email != null) {
+        final remote = await CategoryRulesRepository().fetchUserCorrections(
+          user!.email!,
+        );
+        merged = mergeCorrections(local, remote);
+        // Persist merged map so prefs-based readers (pending suggestions)
+        // see cross-device data while preserving counts.
+        await prefs.setString('category_corrections', jsonEncode(merged));
       }
+
+      _correctionCache = {
+        for (final entry in merged.entries)
+          entry.key.toLowerCase():
+              (entry.value as Map)['category'] as String,
+      };
       _correctionCacheLoaded = true;
     } catch (e) {
       log("Error loading correction cache: $e");
@@ -512,6 +620,9 @@ class SmsService {
   Future<void> initRules({bool force = false}) async {
     if (_rulesLoaded && !force) return;
     try {
+      // On a forced reload, reset to defaults so re-merging is idempotent
+      // (prevents duplicate keywords accumulating across refreshes).
+      if (force) _currentRules = Map.of(defaultRules);
       final fetched = await _rulesRepository.fetchRules();
       if (fetched.isNotEmpty) {
         fetched.forEach((key, value) {
@@ -532,7 +643,7 @@ class SmsService {
         });
       }
       // Load correction cache for merchant-level fallback
-      await loadCorrectionCache();
+      await loadCorrectionCache(force: force);
       // Build category cache from past transactions
       await buildHistoryCache();
       _rulesLoaded = true;
@@ -545,7 +656,9 @@ class SmsService {
   /// Returns null if permission is denied (caller should show settings prompt).
   Future<List<SmsTransaction>?> scanMessages({int limit = 50}) async {
     if (kIsWeb) return [];
-    await initRules();
+    // force: true re-fetches synced rules, custom rules and corrections so
+    // edits made on other devices apply to this scan without an app restart.
+    await initRules(force: true);
 
     var status = await Permission.sms.status;
     if (!status.isGranted) {

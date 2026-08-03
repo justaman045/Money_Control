@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:money_control/Screens/budget.dart';
 import 'package:money_control/Screens/category_management.dart';
 import 'package:money_control/Screens/notification_history.dart';
+import 'package:money_control/Services/background_worker.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/main.dart'; // For ThemeController
 import 'package:money_control/Components/colors.dart';
@@ -20,6 +21,7 @@ class GeneralSettingsScreen extends StatefulWidget {
 
 class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
   bool _autoImport = false;
+  bool _expenseReminder = true;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
     if (!mounted) return;
     setState(() {
       _autoImport = prefs.getBool('sms_auto_import_enabled') == true;
+      _expenseReminder = prefs.getBool(transactionReminderEnabledKey) ?? true;
     });
   }
 
@@ -40,6 +43,13 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
     await prefs.setBool('sms_auto_import_enabled', val);
     if (!mounted) return;
     setState(() => _autoImport = val);
+  }
+
+  Future<void> _toggleExpenseReminder(bool val) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(transactionReminderEnabledKey, val);
+    if (!mounted) return;
+    setState(() => _expenseReminder = val);
   }
 
   @override
@@ -110,6 +120,17 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                     value: _autoImport,
                     activeThumbColor: const Color(0xFF00E5FF),
                     onChanged: _toggleAutoImport,
+                  ),
+                ),
+                SettingsTile(
+                  icon: Icons.alarm_on_outlined,
+                  title: "Expense Reminder",
+                  subtitle:
+                      "Nudge me when no expenses are added for a while",
+                  trailing: Switch(
+                    value: _expenseReminder,
+                    activeThumbColor: const Color(0xFF00E5FF),
+                    onChanged: _toggleExpenseReminder,
                   ),
                 ),
 

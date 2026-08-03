@@ -33,6 +33,131 @@ class CategoryRulesRepository {
     return {};
   }
 
+  /// Fetch merchant→category corrections synced to
+  /// `users/{email}/learning_data/corrections`.
+  Future<Map<String, dynamic>> fetchUserCorrections(String email) async {
+    try {
+      final doc = await _firestore
+          .collection('users')
+          .doc(email)
+          .collection('learning_data')
+          .doc('corrections')
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        final raw = data['corrections'] as Map<String, dynamic>?;
+        if (raw != null) return raw;
+      }
+    } catch (e) {
+      debugPrint("Error fetching user corrections: $e");
+    }
+    return {};
+  }
+
+  /// Increment the count for [merchant]→[category] in the user's synced
+  /// corrections. Returns the new cloud count for the merchant (used to decide
+  /// auto-promotion across devices).
+  Future<int?> saveUserCorrection(
+    String email,
+    String merchant,
+    String category,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(email)
+          .collection('learning_data')
+          .doc('corrections');
+      final key = merchant.trim().toLowerCase();
+      if (key.isEmpty) return null;
+
+      return await _firestore.runTransaction((tx) async {
+        final doc = await tx.get(docRef);
+        final existing = Map<String, dynamic>.from(
+          (doc.data()?['corrections'] as Map?) ?? {},
+        );
+        final entry = existing[key] as Map<String, dynamic>?;
+        int newCount = 1;
+        if (entry != null && entry['category'] == category) {
+          newCount = (entry['count'] as int? ?? 0) + 1;
+          existing[key] = {'category': category, 'count': newCount};
+        } else {
+          existing[key] = {'category': category, 'count': newCount};
+        }
+        tx.set(docRef, {'corrections': existing}, SetOptions(merge: true));
+        return newCount;
+      });
+    } catch (e) {
+      debugPrint("Error saving user correction: $e");
+      return null;
+    }
+  }
+
+  /// Remove a merchant from the user's synced corrections.
+  Future<void> removeUserCorrection(String email, String merchant) async {
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(email)
+          .collection('learning_data')
+          .doc('corrections');
+      final key = merchant.trim().toLowerCase();
+      if (key.isEmpty) return;
+      await _firestore.runTransaction((tx) async {
+        final doc = await tx.get(docRef);
+        final existing = Map<String, dynamic>.from(
+          (doc.data()?['corrections'] as Map?) ?? {},
+        );
+        existing.remove(key);
+        tx.set(docRef, {'corrections': existing}, SetOptions(merge: true));
+      });
+    } catch (e) {
+      debugPrint("Error removing user correction: $e");
+    }
+  }
+
+  /// Fetch manual keyword rules synced to
+  /// `users/{email}/learning_data/customRules`.
+  Future<Map<String, List<String>>> fetchUserCustomRules(String email) async {
+    try {
+      final doc = await _firestore
+          .collection('users')
+          .doc(email)
+          .collection('learning_data')
+          .doc('customRules')
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final raw = doc.data()!['customRules'] as Map<String, dynamic>?;
+        if (raw != null) {
+          return raw.map(
+            (k, v) => MapEntry(k, List<String>.from(v is List ? v : <String>[])),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching user custom rules: $e");
+    }
+    return {};
+  }
+
+  /// Save the user's full manual keyword rules map to Firestore.
+  Future<void> saveUserCustomRules(
+    String email,
+    Map<String, List<String>> rules,
+  ) async {
+    try {
+      final docRef = _firestore
+          .collection('users')
+          .doc(email)
+          .collection('learning_data')
+          .doc('customRules');
+      final serialized = rules.map((k, v) => MapEntry(k, List<String>.from(v)));
+      await docRef.set({'customRules': serialized}, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Error saving user custom rules: $e");
+    }
+  }
+
   /// Save a keyword rule to the user's auto-rules in Firestore.
   Future<void> saveUserAutoRule(
     String email,

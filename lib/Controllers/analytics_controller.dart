@@ -21,18 +21,12 @@ class AnalyticsController extends GetxController {
       Get.put(TransactionController());
     }
     final txController = Get.find<TransactionController>();
-    if (txController.isLoading.value) {
-      // Wait for first load to complete before computing analytics.
-      _txWorker = ever(txController.isLoading, (loading) {
-        if (!loading) {
-          _txWorker?.dispose();
-          _txWorker = null;
-          loadMonthTransactions();
-        }
-      });
-    } else {
-      loadMonthTransactions();
-    }
+    _txWorker = debounce(
+      txController.transactions,
+      (_) => loadMonthTransactions(),
+      time: const Duration(milliseconds: 400),
+    );
+    loadMonthTransactions();
   }
 
   @override

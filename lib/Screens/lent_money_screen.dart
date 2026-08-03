@@ -10,6 +10,7 @@ import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/lent_money_controller.dart';
 import 'package:money_control/Models/lent_money_model.dart';
 import 'package:money_control/Screens/add_lent_money_screen.dart';
+import 'package:money_control/Screens/repayment_screen.dart';
 import 'package:money_control/Screens/split_bill_screen.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:money_control/Components/adaptive_panel.dart';
@@ -314,6 +315,8 @@ class _LentMoneyScreenState extends State<LentMoneyScreen> {
     final activeColor = isReceivable ? Colors.greenAccent : Colors.orangeAccent;
     final iconData = isReceivable ? Icons.arrow_downward : Icons.arrow_upward;
     final typeLabel = isReceivable ? "Lent to" : "Borrowed from";
+    final actionLabel = isReceivable ? "Receive" : "Repay";
+    final actionIcon = isReceivable ? Icons.call_received : Icons.currency_rupee;
 
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
@@ -331,6 +334,14 @@ class _LentMoneyScreenState extends State<LentMoneyScreen> {
           endActionPane: ActionPane(
             motion: const DrawerMotion(),
             children: [
+              SlidableAction(
+                onPressed: (context) =>
+                    Get.to(() => RepaymentScreen(entry: entry)),
+                backgroundColor: activeColor,
+                foregroundColor: Colors.white,
+                icon: actionIcon,
+                label: actionLabel,
+              ),
               SlidableAction(
                 onPressed: (context) {
                   if (!entry.isSettled) {
@@ -427,6 +438,17 @@ class _LentMoneyScreenState extends State<LentMoneyScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                      if (entry.repaidAmount > 0) ...[
+                        SizedBox(height: 4.h),
+                        Text(
+                          "Repaid ${NumberFormat.simpleCurrency(name: currency).format(entry.repaidAmount)}",
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: entry.isSettled ? Colors.green : Colors.teal,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -447,13 +469,56 @@ class _LentMoneyScreenState extends State<LentMoneyScreen> {
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      entry.isSettled ? "Settled" : "Pending",
+                      entry.isSettled
+                          ? "Settled"
+                          : entry.repaidAmount > 0
+                              ? "${_currencyController.currencySymbol.value}${entry.remainingAmount.toStringAsFixed(0)} left"
+                              : "Pending",
                       style: TextStyle(
                         fontSize: 12.sp,
                         color: entry.isSettled ? Colors.green : activeColor,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    if (!entry.isSettled) ...[
+                      SizedBox(height: 6.h),
+                      GestureDetector(
+                        onTap: () =>
+                            Get.to(() => RepaymentScreen(entry: entry)),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 10.w,
+                            vertical: 4.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: activeColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12.r),
+                            border: Border.all(
+                              color: activeColor.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                actionIcon,
+                                size: 12.sp,
+                                color: activeColor,
+                              ),
+                              SizedBox(width: 3.w),
+                              Text(
+                                actionLabel,
+                                style: TextStyle(
+                                  fontSize: 11.sp,
+                                  color: activeColor,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

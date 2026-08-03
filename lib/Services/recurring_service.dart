@@ -219,7 +219,12 @@ class RecurringService {
 
   // Process Due Payments (called by Background Worker). uid is passed explicitly
   // because FirebaseAuth.currentUser may be null in a background isolate.
-  static Future<void> processDuePayments(
+  //
+  // auto-pay payments: create a transaction and advance nextDueDate (current
+  // behavior). Non-auto-pay payments are left untouched (nextDueDate stays put)
+  // so they remain overdue and are returned as the "pending" list for the caller
+  // to remind the user about.
+  static Future<List<RecurringPayment>> processDuePayments(
     String userEmail,
     String uid,
   ) async {
@@ -235,8 +240,15 @@ class RecurringService {
         .where('nextDueDate', isLessThanOrEqualTo: Timestamp.fromDate(today))
         .get();
 
+    final pending = <RecurringPayment>[];
+
     for (var doc in snapshot.docs) {
       final payment = RecurringPayment.fromMap(doc.id, doc.data());
+
+      if (!payment.autoPay) {
+        pending.add(payment);
+        continue;
+      }
 
       // Idempotency: skip if a transaction for this payment was already
       // created for the current billing cycle.
@@ -284,6 +296,8 @@ class RecurringService {
 
       await batch.commit();
     }
+
+    return pending;
   }
 
   DateTime _advanceDate(RecurringPayment payment) =>

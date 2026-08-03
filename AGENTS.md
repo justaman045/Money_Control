@@ -62,7 +62,7 @@ flutter build appbundle --release
 flutter gen-l10n                    # after editing ARB files in lib/l10n/
 ```
 
-CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter **3.35.5**, Dart `^3.9.2`. Version auto-bumped by CI (`pubspec.yaml`, `app_version.json`, README download link).
+CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter **3.35.5**, Dart `^3.9.2`. On merge to `master`, CI auto-bumps `pubspec.yaml` to `2.0.<run_number>`, updates `app_version.json` + README download link, creates a signed GitHub release (`v2.0.<run_number>`), and deploys web to GitHub Pages under base-href `/WealthSync/`. Version-commit/README-commit loops are avoided by skipping the commit when the message starts with `CI:`.
 
 ## Architecture
 
@@ -82,7 +82,7 @@ CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter 
 | `lib/l10n/` | ARB localization files (`app_en.arb` template) |
 | `lib/data/` | Challenge preset seed data |
 | `test/` | 3 unit/widget test files |
-| `integration_test/` | 7 integration tests (require Firebase emulator) |
+| `integration_test/` | 7 integration tests — require a configured Firebase backend (no emulator wiring; `mainCommon(isTest: true)` only skips Crashlytics/notifications) |
 
 ThemeController is inline in `main.dart` (registered before any screen).
 
@@ -109,7 +109,7 @@ One Firestore subcollection per asset type under `users/{userEmail}/`, plus `wea
 
 **WealthPortfolio** (`lib/Models/wealth_data.dart`): 24 asset fields + `custom` map, `targets`, `hiddenKeys`. `totalAssets` sums all 24 + custom entries. `totalLiabilities = loans + creditCard + bnpl`.
 
-**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:56` (primary subscription). Note: `_loadData()` at line 82 also calls `getPortfolio()` for geo-enrichment, but the primary real-time data comes from the stream.
+**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:58` (primary subscription in `initState`). Note: `_loadData()` (line 74) also calls `getPortfolio()` (line 89) for geo-enrichment, but the primary real-time data comes from the stream.
 
 **Generic screen**: `AssetDetailScreen(config:)` for all 24 types. Custom screens: `RealEstateDetailScreen`, `VehicleDetailScreen`, `InsurancePolicyScreen`, `CreditCardDetailScreen`.
 
@@ -138,7 +138,7 @@ Priority: refund/cashback→credit, debited/deducted/withdrawn/spent/sent→debi
 3. **Salary detection false positives** — filter EMI/loans from candidates BEFORE median/max. Check `recipientName` for exclusion keywords only (not `note`/`category`).
 4. **`fromMap` Timestamp cast** — use `(map['lastUpdated'] as dynamic)?.toDate()` (works with real Timestamp and test mocks).
 5. **Test values drift** — when adding asset fields, update `totalAssets` expected values in both `wealth_data_test.dart` tests and the comment sum.
-6. **`compact()` rounds** — `compact(1500)` → `"2K"` (not `"1.5K"`).
+6. **`compact()` formats** — `wealth_math.dart`: ≥1M → `"x.xCr"`, ≥100K → `"x.xL"`, ≥1K → integer `K` (so `compact(1500)` → `"2K"`, not `"1.5K"`).
 7. **Don't mix GetX + Flutter navigator** — `Get.dialog()` + `Navigator.pop()` + `Get.snackbar()` crashes. Use `showDialog()` + `Navigator.of(context, rootNavigator: true).pop()` + `ScaffoldMessenger.showSnackBar()`.
 8. **FilePicker.saveFile() returns content:// on Android** — cannot `File(uri).writeAsString()`. Pass `bytes: Uint8List.fromList(utf8.encode(csv))`.
 9. **`orderBy() as Query` is unnecessary cast** — triggers `unnecessary_cast` warning.

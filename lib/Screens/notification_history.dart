@@ -56,7 +56,7 @@ class NotificationHistoryScreen extends StatelessWidget {
                       .collection('users')
                       .doc(user.email)
                       .collection('notifications')
-                      .orderBy('date', descending: true)
+                      .orderBy('timestamp', descending: true)
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
@@ -109,6 +109,7 @@ class NotificationHistoryScreen extends StatelessWidget {
                           title: data['title'] ?? 'Notification',
                           body: data['body'] ?? '',
                           date:
+                              (data['timestamp'] as Timestamp?)?.toDate() ??
                               (data['date'] as Timestamp?)?.toDate() ??
                               DateTime.now(),
                           type: data['type'] ?? 'info',
@@ -197,7 +198,17 @@ class _NotificationTile extends StatelessWidget {
     IconData icon;
     Color color;
 
-    switch (type) {
+    // Stored type is the notification channel id (e.g. 'reminder_channel').
+    // Normalize it so the switch below matches and the right icon shows.
+    String normalizedType = type;
+    if (normalizedType.endsWith('_channel')) {
+      normalizedType = normalizedType.substring(
+        0,
+        normalizedType.length - '_channel'.length,
+      );
+    }
+
+    switch (normalizedType) {
       case 'budget_alert':
         icon = Icons.warning_amber_rounded;
         color = const Color(0xFFFF2975);
@@ -205,6 +216,23 @@ class _NotificationTile extends StatelessWidget {
       case 'reminder':
         icon = Icons.alarm_on_rounded;
         color = const Color(0xFF00E5FF);
+        break;
+      case 'sms_import':
+        icon = Icons.smart_toy_outlined;
+        color = const Color(0xFF7C4DFF);
+        break;
+      case 'insight':
+      case 'weekly_digest':
+        icon = Icons.insights_rounded;
+        color = const Color(0xFF00C853);
+        break;
+      case 'update':
+        icon = Icons.system_update_alt_rounded;
+        color = const Color(0xFF00E5FF);
+        break;
+      case 'recurring_pending':
+        icon = Icons.event_repeat_rounded;
+        color = const Color(0xFFFF9100);
         break;
       default:
         icon = Icons.info_outline_rounded;

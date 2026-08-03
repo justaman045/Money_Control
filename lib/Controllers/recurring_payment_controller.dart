@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
@@ -11,6 +12,7 @@ class RecurringPaymentController extends GetxController {
   final RecurringService _service = RecurringService();
   final _auth = FirebaseAuth.instance;
   final RxDouble pendingSubscriptions = 0.0.obs;
+  StreamSubscription<List<RecurringPayment>>? _paymentsSub;
 
   String? get _userEmail => _auth.currentUser?.email;
   String get _cacheKey => 'recurring_${_userEmail ?? ''}';
@@ -20,6 +22,19 @@ class RecurringPaymentController extends GetxController {
     super.onInit();
     _loadFromCache();
     _fetchFromFirestore();
+    // Keep the monthly commitment in lockstep with the subscriptions screen:
+    // recompute on every Firestore snapshot so adds/edits/deletes and auto-pay
+    // date advances are reflected without restarting the app.
+    _paymentsSub = _service.getPayments().listen(
+      (list) => pendingSubscriptions.value = _computeMonthlyTotal(list),
+      onError: (e) => log('RecurringPaymentController stream error: $e'),
+    );
+  }
+
+  @override
+  void onClose() {
+    _paymentsSub?.cancel();
+    super.onClose();
   }
 
   void _loadFromCache() {
@@ -36,6 +51,17 @@ class RecurringPaymentController extends GetxController {
 
   Future<void> _fetchFromFirestore() async {
     try {
+      // Foreground auto-pay: process due auto-pay payments right away so the
+      // transaction + date advance work on web (no WorkManager) and faster
+      // than the 15-min background worker. Pending (non-auto-pay) payments are
+      // returned but intentionally ignored here — the reminder is sent only
+      // from the background worker to avoid notifying while the user is in-app.
+      final email = _auth.currentUser?.email;
+      final uid = _auth.currentUser?.uid;
+      if (email != null && uid != null) {
+        await RecurringService.processDuePayments(email, uid);
+      }
+
       final list = await _service.getPaymentsOnce();
       if (_userEmail != null) {
         final cacheData = list.map((t) {
@@ -45,7 +71,6 @@ class RecurringPaymentController extends GetxController {
         }).toList();
         LocalCacheService.put(_cacheKey, cacheData, ttl: LocalCacheService.slow5m);
       }
-      pendingSubscriptions.value = _computeMonthlyTotal(list);
     } catch (e) {
       log('RecurringPaymentController._fetchFromFirestore error: $e');
     }

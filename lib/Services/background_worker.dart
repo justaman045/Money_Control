@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'package:money_control/firebase_options.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:money_control/Services/recurring_service.dart';
+import 'package:money_control/Models/recurring_payment_model.dart';
 import 'package:money_control/Services/sms_service.dart';
 import 'package:money_control/Services/widget_service.dart';
 import 'package:money_control/Platform/permission_platform.dart';
@@ -107,6 +108,40 @@ class BackgroundWorker {
 /// Task name used by WorkManager
 const String taskName = "periodic_task";
 
+/// Preference key for the "Expense Reminder" toggle (Settings → General → Automation).
+const String transactionReminderEnabledKey = 'transaction_reminder_enabled';
+
+/// Preference key tracking when a transaction was last recorded (SMS import,
+/// manual add, recurring payment). Suppresses the inactivity reminder.
+const String lastTransactionAddedKey = 'last_transaction_added_ms';
+
+/// Pure decision helper for the inactivity ("haven't added expenses") reminder.
+///
+/// Returns true only when all of these hold:
+///  - the reminder is enabled,
+///  - the app has been opened at least once,
+///  - the app was last opened more than [inactivityWindow] ago,
+///  - no transaction was recorded in the last [inactivityWindow],
+///  - no reminder was sent in the last [inactivityWindow] (throttle).
+bool shouldSendInactivityReminder({
+  required int lastOpened,
+  required int lastReminded,
+  required int lastTransactionAdded,
+  required int now,
+  bool reminderEnabled = true,
+  Duration inactivityWindow = const Duration(hours: 6),
+}) {
+  if (!reminderEnabled) return false;
+  if (lastOpened == 0) return false;
+  final windowMs = inactivityWindow.inMilliseconds;
+  if (lastOpened >= now - windowMs) return false;
+  if (lastTransactionAdded != 0 && now - lastTransactionAdded < windowMs) {
+    return false;
+  }
+  if (now - lastReminded <= windowMs) return false;
+  return true;
+}
+
 /// This function is called in the background isolate.
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -124,23 +159,24 @@ void callbackDispatcher() {
 
       final prefs = await SharedPreferences.getInstance();
 
-      // --- LOGIC 1: INACTIVITY REMINDER ---
-      await _checkInactivity(prefs);
-
-      // --- LOGIC 2: DAILY INSIGHTS (10 PM) ---
-      await _checkDailyInsights(prefs);
-
-      // --- LOGIC 3: UPDATE CHECK ---
-      await _checkUpdate(prefs);
-
-      // --- LOGIC 4: RECURRING PAYMENTS ---
-      await _checkRecurringPayments(prefs);
-
-      // --- LOGIC 5: SMS AUTO-IMPORT ---
+      // --- LOGIC 1: SMS AUTO-IMPORT ---
+      // Runs before the inactivity reminder so a run that just imported
+      // transactions does not also nag the user in the same tick.
       if (prefs.getBool('sms_auto_import_enabled') == true) {
         await _processSmsMessages(prefs);
       }
 
+      // --- LOGIC 2: INACTIVITY REMINDER ---
+      await _checkInactivity(prefs);
+
+      // --- LOGIC 3: DAILY INSIGHTS (10 PM) ---
+      await _checkDailyInsights(prefs);
+
+      // --- LOGIC 4: UPDATE CHECK ---
+      await _checkUpdate(prefs);
+
+      // --- LOGIC 5: RECURRING PAYMENTS ---
+      await _checkRecurringPayments(prefs);
 
       // --- LOGIC 6: WEEKLY DIGEST ---
       await _checkWeeklyDigest(prefs);
@@ -153,32 +189,26 @@ void callbackDispatcher() {
 // ---------------- CHECKERS ----------------
 
 Future<void> _checkInactivity(SharedPreferences prefs) async {
-  final lastOpened = prefs.getInt('lastOpened') ?? 0;
   final now = DateTime.now().millisecondsSinceEpoch;
-  final sixHoursMs = const Duration(hours: 6).inMilliseconds;
+  final shouldSend = shouldSendInactivityReminder(
+    lastOpened: prefs.getInt('lastOpened') ?? 0,
+    lastReminded: prefs.getInt('last_inactivity_reminded') ?? 0,
+    lastTransactionAdded: prefs.getInt(lastTransactionAddedKey) ?? 0,
+    now: now,
+    reminderEnabled: prefs.getBool(transactionReminderEnabledKey) ?? true,
+  );
 
-  // We add a 'last_reminded' check to avoid spamming every 15 mins after 6 hours
-  final lastReminded = prefs.getInt('last_inactivity_reminded') ?? 0;
-  final sixHoursAgo = now - sixHoursMs;
+  if (!shouldSend) return;
 
-  if (lastOpened != 0 && lastOpened < sixHoursAgo) {
-    // Only remind if we haven't reminded since the last open (approx logic)
-    // Or just remind once every 24 hours of inactivity?
-    // Current logic: simple 6 hours. Let's stick to simple but throttle it.
-
-    // Throttle: don't remind if reminded in last 6 hours
-    if (now - lastReminded > sixHoursMs) {
-      final userEmail = prefs.getString('user_email');
-      await BackgroundWorker.showNotification(
-        "Money reminder 💸",
-        "You haven’t added your expenses in a while — track them now!",
-        'reminder_channel',
-        'Reminders',
-        userEmail: userEmail,
-      );
-      await prefs.setInt('last_inactivity_reminded', now);
-    }
-  }
+  final userEmail = prefs.getString('user_email');
+  await BackgroundWorker.showNotification(
+    "Money reminder 💸",
+    "You haven’t added your expenses in a while — track them now!",
+    'reminder_channel',
+    'Reminders',
+    userEmail: userEmail,
+  );
+  await prefs.setInt('last_inactivity_reminded', now);
 }
 
 Future<void> _checkDailyInsights(SharedPreferences prefs) async {
@@ -361,14 +391,47 @@ Future<void> _checkRecurringPayments(SharedPreferences prefs) async {
   final uid = prefs.getString('user_uid');
   if (userEmail != null && uid != null) {
     try {
-      await RecurringService.processDuePayments(userEmail, uid);
+      final pending = await RecurringService.processDuePayments(userEmail, uid);
       await _updateWidgetBalance(userEmail);
+
+      if (pending.isNotEmpty) {
+        await _showPendingReminder(prefs, userEmail, pending);
+      }
 
       await prefs.setString('last_recurring_run', todayStr);
     } catch (e) {
       developer.log("Error processing recurring payments: $e");
     }
   }
+}
+
+Future<void> _showPendingReminder(
+  SharedPreferences prefs,
+  String userEmail,
+  List<RecurringPayment> pending,
+) async {
+  final symbol = prefs.getString('currency_symbol') ?? '\u20B9';
+  final count = pending.length;
+
+  String listPreview;
+  if (count == 1) {
+    final p = pending.first;
+    listPreview = '$symbol${p.amount.toStringAsFixed(0)} — ${p.title}';
+  } else {
+    final names = pending
+        .take(2)
+        .map((p) => '$symbol${p.amount.toStringAsFixed(0)} ${p.title}')
+        .join(', ');
+    listPreview = '$names, +${count - 2} more';
+  }
+
+  await BackgroundWorker.showNotification(
+    count == 1 ? 'Bill Pending' : '$count Bills Pending',
+    '$listPreview. Open app to mark them paid.',
+    'recurring_pending_channel',
+    'Recurring Payments',
+    userEmail: userEmail,
+  );
 }
 
 Future<int> _processSmsMessages(
@@ -422,6 +485,7 @@ Future<int> _processSmsMessages(
         msg.body ?? '',
         msg.sender ?? 'Unknown',
         msg.date ?? DateTime.now(),
+        rules: SmsService.currentRules,
       );
       if (parsed == null) continue;
 
@@ -473,6 +537,9 @@ Future<int> _processSmsMessages(
     if (imported > 0) {
       await batch.commit();
       await _updateWidgetBalance(userEmail);
+      // Remember that transactions were recorded — this suppresses the
+      // "haven't added expenses" inactivity reminder for the next 6 hours.
+      await prefs.setInt(lastTransactionAddedKey, DateTime.now().millisecondsSinceEpoch);
     }
 
     if (imported > 0) {

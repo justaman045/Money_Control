@@ -51,6 +51,9 @@ class _AutoTagRulesScreenState extends State<AutoTagRulesScreen> {
       });
     }
 
+    // Refresh synced corrections so pending suggestions from other devices
+    // appear here too.
+    await SmsService.loadCorrectionCache(force: true);
     final suggestions = await CategoryService.getPendingSuggestions();
 
     if (!mounted) return;

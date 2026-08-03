@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:money_control/Models/cateogary.dart';
 import 'package:money_control/Models/recurring_payment_model.dart';
 import 'package:money_control/Services/recurring_service.dart';
 import 'package:uuid/uuid.dart';
@@ -314,6 +315,8 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
         item.nextDueDate.month == now.month;
     final isPaid = !isDueThisMonth && item.nextDueDate.isAfter(now);
     final isPaused = !item.isActive;
+    final isPending =
+        item.isActive && !item.autoPay && !item.nextDueDate.isAfter(now);
 
     return Opacity(
       opacity: isPaused ? 0.6 : (isPaid ? 0.8 : 1.0),
@@ -329,10 +332,12 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                 ? const Color(0xFF00E676).withValues(
                     alpha: 0.3,
                   ) // Green glow for paid
-                : (isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.white.withValues(alpha: 0.5)),
-            width: isPaid ? 1.5 : 1,
+                : (isPending
+                      ? Colors.orange.withValues(alpha: 0.3)
+                      : (isDark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.white.withValues(alpha: 0.5))),
+            width: (isPaid || isPending) ? 1.5 : 1,
           ),
           gradient: isDark
               ? LinearGradient(
@@ -348,7 +353,9 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
             BoxShadow(
               color: isPaid
                   ? const Color(0xFF00E676).withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                  : (isPending
+                        ? Colors.orange.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: isDark ? 0.2 : 0.05)),
               blurRadius: 15.w,
               offset: Offset(0.w, 8.w),
             ),
@@ -362,12 +369,17 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                 gradient: LinearGradient(
                   colors: isPaused
                       ? [Colors.grey.shade700, Colors.grey.shade800]
-                      : (isPaid
-                            ? [const Color(0xFF00E676), const Color(0xFF00C853)]
-                            : [
-                                const Color(0xFF6C63FF),
-                                const Color(0xFF4834D4),
-                              ]),
+                      : (isPending
+                            ? [Colors.orange, Colors.deepOrange]
+                            : (isPaid
+                                  ? [
+                                      const Color(0xFF00E676),
+                                      const Color(0xFF00C853),
+                                    ]
+                                  : [
+                                      const Color(0xFF6C63FF),
+                                      const Color(0xFF4834D4),
+                                    ])),
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -377,9 +389,11 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                     color:
                         (isPaused
                                 ? Colors.grey
-                                : (isPaid
-                                      ? const Color(0xFF00E676)
-                                      : const Color(0xFF6C63FF)))
+                                : (isPending
+                                      ? Colors.orange
+                                      : (isPaid
+                                            ? const Color(0xFF00E676)
+                                            : const Color(0xFF6C63FF))))
                             .withValues(alpha: 0.3),
                     blurRadius: 10.w,
                     offset: Offset(0.w, 4.w),
@@ -389,9 +403,11 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
               child: Icon(
                 isPaused
                     ? Icons.pause_rounded
-                    : (isPaid
-                          ? Icons.check_circle_outline_rounded
-                          : Icons.receipt_long_rounded),
+                    : (isPending
+                          ? Icons.pending_actions_rounded
+                          : (isPaid
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.receipt_long_rounded)),
                 color: Colors.white,
                 size: 22.sp,
               ),
@@ -401,15 +417,51 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    item.title,
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                      letterSpacing: 0.3,
-                      decoration: isPaused ? TextDecoration.lineThrough : null,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          item.title,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: textColor,
+                            letterSpacing: 0.3,
+                            decoration: isPaused ? TextDecoration.lineThrough : null,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      if (item.autoPay) ...[
+                        SizedBox(width: 8.w),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6.w,
+                            vertical: 2.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF00B8D4,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6.r),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF00B8D4,
+                              ).withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Text(
+                            "AUTO",
+                            style: TextStyle(
+                              fontSize: 9.sp,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF00B8D4),
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   SizedBox(height: 6.h),
                   Container(
@@ -420,36 +472,47 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                     decoration: BoxDecoration(
                       color: isPaused
                           ? Colors.orange.withValues(alpha: 0.1)
-                          : (isPaid
-                                ? const Color(0xFF00E676).withValues(alpha: 0.1)
-                                : textColor.withValues(alpha: 0.06)),
+                          : (isPending
+                                ? Colors.orange.withValues(alpha: 0.12)
+                                : (isPaid
+                                      ? const Color(0xFF00E676).withValues(alpha: 0.1)
+                                      : textColor.withValues(alpha: 0.06))),
                       borderRadius: BorderRadius.circular(6.r),
                       border: isPaused
                           ? Border.all(
                               color: Colors.orange.withValues(alpha: 0.3),
                               width: 1,
                             )
-                          : (isPaid
+                          : (isPending
                                 ? Border.all(
-                                    color: const Color(
-                                      0xFF00E676,
-                                    ).withValues(alpha: 0.3),
+                                    color: Colors.orange.withValues(alpha: 0.4),
+                                    width: 1,
                                   )
-                                : null),
+                                : (isPaid
+                                      ? Border.all(
+                                          color: const Color(
+                                            0xFF00E676,
+                                          ).withValues(alpha: 0.3),
+                                        )
+                                      : null)),
                     ),
                     child: Text(
                       isPaused
                           ? "PAUSED"
-                          : (isPaid
-                                ? "PAID • Due ${DateFormat('MMM dd').format(item.nextDueDate)}"
-                                : "${item.frequency.name.capitalizeFirst} • Due ${DateFormat('MMM dd').format(item.nextDueDate)}"),
+                          : (isPending
+                                ? "PENDING • Due ${DateFormat('MMM dd').format(item.nextDueDate)}"
+                                : (isPaid
+                                      ? "PAID • Due ${DateFormat('MMM dd').format(item.nextDueDate)}"
+                                      : "${item.frequency.name.capitalizeFirst} • Due ${DateFormat('MMM dd').format(item.nextDueDate)}")),
                       style: TextStyle(
                         fontSize: 11.sp,
                         color: isPaused
                             ? Colors.orange
-                            : (isPaid
-                                  ? const Color(0xFF00E676)
-                                  : textColor.withValues(alpha: 0.6)),
+                            : (isPending
+                                  ? Colors.orange
+                                  : (isPaid
+                                        ? const Color(0xFF00E676)
+                                        : textColor.withValues(alpha: 0.6))),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -524,30 +587,6 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
     bool isDark, {
     RecurringPayment? payment,
   }) {
-    final formKey = GlobalKey<FormState>();
-    final titleCtrl = TextEditingController(text: payment?.title);
-    final amountCtrl = TextEditingController(text: payment?.amount.toString());
-    RecurringFrequency freq = payment?.frequency ?? RecurringFrequency.monthly;
-    DateTime nextPaymentDate =
-        payment?.nextDueDate ?? DateTime.now().add(const Duration(days: 30));
-
-    // Category Logic
-    final categories = _txController.categories;
-    String category = payment?.category ?? 'Utilities';
-
-    // Ensure category exists in list (optional but good for UX)
-    // If exact match not found, we keep the string but it might not show as selected if we enforce strict values.
-    // However, DropdownButton requires the value to be in the items list.
-    // Let's create a safe list including the current category if it's missing.
-    final categoryNames = categories.map((e) => e.name).toSet();
-    if (category.isNotEmpty) categoryNames.add(category);
-    if (categoryNames.isEmpty) categoryNames.add('General');
-    final sortedCategories = categoryNames.toList()..sort();
-
-    if (category.isEmpty) {
-      category = sortedCategories.first;
-    }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -556,172 +595,288 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
       ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                24.w,
-                24.h,
-                24.w,
-                MediaQuery.of(context).viewInsets.bottom + 24.h,
+      builder: (context) => _AddSubscriptionSheet(
+        payment: payment,
+        categories: _txController.categories,
+        isDark: isDark,
+        onSave: (p) =>
+            payment == null ? _service.addPayment(p) : _service.updatePayment(p),
+      ),
+    );
+  }
+}
+
+class _AddSubscriptionSheet extends StatefulWidget {
+  final RecurringPayment? payment;
+  final List<CategoryModel> categories;
+  final bool isDark;
+  final Future<void> Function(RecurringPayment payment) onSave;
+
+  const _AddSubscriptionSheet({
+    required this.payment,
+    required this.categories,
+    required this.isDark,
+    required this.onSave,
+  });
+
+  @override
+  State<_AddSubscriptionSheet> createState() => _AddSubscriptionSheetState();
+}
+
+class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _amountCtrl;
+  late RecurringFrequency _freq;
+  late DateTime _nextPaymentDate;
+  late bool _autoPay;
+  late String _category;
+  late final List<String> _sortedCategories;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.payment?.title);
+    _amountCtrl =
+        TextEditingController(text: widget.payment?.amount.toString());
+    _freq = widget.payment?.frequency ?? RecurringFrequency.monthly;
+    _nextPaymentDate = widget.payment?.nextDueDate ??
+        DateTime.now().add(const Duration(days: 30));
+    _autoPay = widget.payment?.autoPay ?? false;
+
+    _category = widget.payment?.category ?? 'Utilities';
+    final categoryNames = widget.categories.map((e) => e.name).toSet();
+    if (_category.isNotEmpty) categoryNames.add(_category);
+    if (categoryNames.isEmpty) categoryNames.add('General');
+    _sortedCategories = categoryNames.toList()..sort();
+    if (_category.isEmpty) _category = _sortedCategories.first;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickNextPaymentDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _nextPaymentDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+    if (picked != null) {
+      if (!mounted) return;
+      setState(() => _nextPaymentDate = picked);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_formKey.currentState!.validate()) {
+      final amount = double.tryParse(_amountCtrl.text) ?? 0;
+      if (amount <= 0) {
+        Get.snackbar("Invalid Amount", "Enter a valid amount greater than 0");
+        return;
+      }
+      setState(() => _saving = true);
+      final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final newPayment = RecurringPayment(
+        id: widget.payment?.id ?? const Uuid().v4(),
+        userId: userId,
+        title: _titleCtrl.text.trim(),
+        amount: amount,
+        category: _category,
+        frequency: _freq,
+        startDate: widget.payment?.startDate ?? DateTime.now(),
+        nextDueDate: _nextPaymentDate,
+        isActive: true,
+        autoPay: _autoPay,
+      );
+      try {
+        await widget.onSave(newPayment);
+        if (!mounted) return;
+        Navigator.pop(context);
+      } catch (e) {
+        if (mounted) {
+          setState(() => _saving = false);
+          Get.snackbar("Error", "Failed to save. Please try again.");
+        }
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24.w,
+        24.h,
+        24.w,
+        MediaQuery.of(context).viewInsets.bottom + 24.h,
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.payment == null
+                  ? "New Subscription"
+                  : "Edit Subscription",
+              style: TextStyle(
+                fontSize: 20.sp,
+                fontWeight: FontWeight.bold,
               ),
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            SizedBox(height: 20.h),
+            TextFormField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(
+                labelText: "Name (e.g. Netflix)",
+              ),
+              validator: (v) => v!.isEmpty ? "Required" : null,
+            ),
+            SizedBox(height: 16.h),
+            TextFormField(
+              controller: _amountCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "Amount"),
+              validator: (v) => v!.isEmpty ? "Required" : null,
+            ),
+            SizedBox(height: 16.h),
+
+            // Frequency
+            DropdownButtonFormField<RecurringFrequency>(
+              initialValue: _freq,
+              items: RecurringFrequency.values
+                  .map(
+                    (f) => DropdownMenuItem(
+                      value: f,
+                      child: Text(f.name.capitalizeFirst ?? f.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _freq = v!),
+              decoration: const InputDecoration(labelText: "Frequency"),
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Category Dropdown
+            DropdownButtonFormField<String>(
+              initialValue: _category,
+              items: _sortedCategories
+                  .map(
+                    (c) => DropdownMenuItem(value: c, child: Text(c)),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _category = v!),
+              decoration: const InputDecoration(labelText: "Category"),
+            ),
+
+            SizedBox(height: 16.h),
+
+            // Next Payment Date Picker
+            GestureDetector(
+              onTap: _pickNextPaymentDate,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.w,
+                  vertical: 16.h,
+                ),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(4.r),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      payment == null
-                          ? "New Subscription"
-                          : "Edit Subscription",
-                      style: TextStyle(
-                        fontSize: 20.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      "Next Payment: ${DateFormat('MMM dd, yyyy').format(_nextPaymentDate)}",
+                      style: TextStyle(fontSize: 16.sp),
                     ),
-                    SizedBox(height: 20.h),
-                    TextFormField(
-                      controller: titleCtrl,
-                      decoration: const InputDecoration(
-                        labelText: "Name (e.g. Netflix)",
-                      ),
-                      validator: (v) => v!.isEmpty ? "Required" : null,
-                    ),
-                    SizedBox(height: 16.h),
-                    TextFormField(
-                      controller: amountCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: "Amount"),
-                      validator: (v) => v!.isEmpty ? "Required" : null,
-                    ),
-                    SizedBox(height: 16.h),
-
-                    // Frequency
-                    DropdownButtonFormField<RecurringFrequency>(
-                      initialValue: freq,
-                      items: RecurringFrequency.values
-                          .map(
-                            (f) => DropdownMenuItem(
-                              value: f,
-                              child: Text(f.name.capitalizeFirst ?? f.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setModalState(() => freq = v!),
-                      decoration: const InputDecoration(labelText: "Frequency"),
-                    ),
-
-                    SizedBox(height: 16.h),
-
-                    // Category Dropdown
-                    DropdownButtonFormField<String>(
-                      initialValue: category,
-                      items: sortedCategories
-                          .map(
-                            (c) => DropdownMenuItem(value: c, child: Text(c)),
-                          )
-                          .toList(),
-                      onChanged: (v) => setModalState(() => category = v!),
-                      decoration: const InputDecoration(labelText: "Category"),
-                    ),
-
-                    SizedBox(height: 16.h),
-
-                    // Next Payment Date Picker
-                    GestureDetector(
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: nextPaymentDate,
-                          firstDate: DateTime.now().subtract(
-                            const Duration(days: 365),
-                          ),
-                          lastDate: DateTime.now().add(
-                            const Duration(days: 365 * 2),
-                          ),
-                        );
-                        if (picked != null) {
-                          setModalState(() => nextPaymentDate = picked);
-                        }
-                      },
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.w,
-                          vertical: 16.h,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(4.r),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Next Payment: ${DateFormat('MMM dd, yyyy').format(nextPaymentDate)}",
-                              style: TextStyle(fontSize: 16.sp),
-                            ),
-                            Icon(Icons.calendar_today, size: 20.sp),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 24.h),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50.h,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          if (formKey.currentState!.validate()) {
-                            final amount = double.tryParse(amountCtrl.text) ?? 0;
-                            if (amount <= 0) {
-                              Get.snackbar("Invalid Amount", "Enter a valid amount greater than 0");
-                              return;
-                            }
-                            final userId =
-                                FirebaseAuth.instance.currentUser?.uid ?? '';
-                            final newPayment = RecurringPayment(
-                              id: payment?.id ?? const Uuid().v4(),
-                              userId: userId,
-                              title: titleCtrl.text.trim(),
-                              amount: amount,
-                              category: category,
-                              frequency: freq,
-                              startDate: payment?.startDate ?? DateTime.now(),
-                              nextDueDate: nextPaymentDate,
-                              isActive: true,
-                            );
-
-                            try {
-                              if (payment == null) {
-                                await _service.addPayment(newPayment);
-                              } else {
-                                await _service.updatePayment(newPayment);
-                              }
-                              if (context.mounted) Navigator.pop(context);
-                            } catch (e) {
-                              if (context.mounted) {
-                                Get.snackbar("Error", "Failed to save. Please try again.");
-                              }
-                            }
-                          }
-                        },
-                        child: const Text("Save"),
-                      ),
-                    ),
+                    Icon(Icons.calendar_today, size: 20.sp),
                   ],
                 ),
               ),
-            );
-          },
-        );
-      },
-    ).whenComplete(() {
-      titleCtrl.dispose();
-      amountCtrl.dispose();
-    });
+            ),
+
+            SizedBox(height: 24.h),
+
+            // Auto-pay toggle
+            Material(
+              color: _autoPay
+                  ? const Color(0xFF00E5FF).withValues(alpha: 0.08)
+                  : textColor.withValues(alpha: 0.04),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                side: BorderSide(
+                  color: _autoPay
+                      ? const Color(0xFF00E5FF).withValues(alpha: 0.3)
+                      : textColor.withValues(alpha: 0.1),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.w,
+                  vertical: 4.h,
+                ),
+                child: CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _autoPay,
+                  onChanged: (v) => setState(() => _autoPay = v ?? false),
+                  title: Text(
+                    "Auto-pay",
+                    style: TextStyle(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _autoPay
+                        ? "When due, a transaction is created automatically."
+                        : "Remind me when due — I'll mark it paid manually.",
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: textColor.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  secondary: Icon(
+                    _autoPay
+                        ? Icons.auto_awesome_rounded
+                        : Icons.notifications_active_outlined,
+                    color: _autoPay
+                        ? const Color(0xFF00B8D4)
+                        : Colors.orange,
+                    size: 22.sp,
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  activeColor: const Color(0xFF00B8D4),
+                  checkColor: Colors.black,
+                ),
+              ),
+            ),
+
+            SizedBox(height: 24.h),
+
+            SizedBox(
+              width: double.infinity,
+              height: 50.h,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                child: const Text("Save"),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

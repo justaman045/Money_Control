@@ -9,8 +9,10 @@ import 'package:money_control/Services/local_backup_service.dart';
 import 'package:money_control/Services/offline_queue.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'package:money_control/Services/error_handler.dart';
+import 'package:money_control/Services/background_worker.dart';
 import 'package:money_control/Services/widget_service.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/subscription_controller.dart';
@@ -380,6 +382,16 @@ class TransactionController extends GetxController {
 
     // 3. Invalidate cache so next cold load is fresh
     LocalCacheService.invalidate(_cacheKey);
+
+    // Remember this transaction was recorded so the background "haven't
+    // added expenses" reminder stays quiet for the next few hours.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        lastTransactionAddedKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {} // ignore pref failures — best-effort only
 
     final email = user.email;
     if (email == null) {
