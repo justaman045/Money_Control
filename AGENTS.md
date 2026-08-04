@@ -55,7 +55,8 @@ showGeneralDialog(context: Get.overlayContext!, ...);
 ```bash
 flutter pub get
 flutter analyze --no-fatal-infos   # CI gate (warnings→errors, infos OK)
-flutter test                        # 3 unit/widget test files
+flutter test                        # 6 unit/widget test files (pure logic only — no Firebase)
+flutter test test/<file>_test.dart  # single file
 flutter run
 flutter build apk --release
 flutter build appbundle --release
@@ -81,7 +82,7 @@ CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter 
 | `lib/Platform/` | Platform abstraction stubs for 9 services (biometric, geocoding, IAP, notification, SMS, etc.) |
 | `lib/l10n/` | ARB localization files (`app_en.arb` template) |
 | `lib/data/` | Challenge preset seed data |
-| `test/` | 3 unit/widget test files |
+| `test/` | 6 unit/widget test files (inactivity_reminder, lent_money_model, sms_category, wealth_data, wealth_math, widget) |
 | `integration_test/` | 7 integration tests — require a configured Firebase backend (no emulator wiring; `mainCommon(isTest: true)` only skips Crashlytics/notifications) |
 
 ThemeController is inline in `main.dart` (registered before any screen).

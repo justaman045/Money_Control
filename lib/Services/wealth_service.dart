@@ -190,6 +190,28 @@ class WealthService {
     return balance;
   }
 
+  /// Calculate average monthly income from the last [months] of transactions.
+  static double calculateAverageMonthlyIncome(
+    List<TransactionModel> transactions, {
+    int months = 3,
+  }) {
+    final user = _auth.currentUser;
+    if (user == null) return 0;
+
+    double totalIncome = 0;
+    try {
+      final cutoff = DateTime.now().subtract(Duration(days: 30 * months));
+      for (final tx in transactions) {
+        if (tx.recipientId == user.uid && tx.date.isAfter(cutoff)) {
+          totalIncome += tx.amount.abs();
+        }
+      }
+    } catch (e) {
+      log("Error calculating monthly income: $e");
+    }
+    return months > 0 ? totalIncome / months : 0;
+  }
+
   /// Generate smart financial insights based on transaction history and current portfolio
   static List<Map<String, dynamic>> generateSmartInsights(
     WealthPortfolio portfolio,
@@ -379,6 +401,7 @@ class WealthService {
     List<TransactionModel> transactions,
     UserModel? userProfile, {
     int baselineMonthlyIncome = 25000,
+    double bankBalance = 0,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return {};
@@ -464,12 +487,56 @@ class WealthService {
       };
       const expenseBased = {'bank', 'fd', 'postOffice'};
 
+      // Cap gold / SGB at 10% of visible net worth so alternatives never
+      // dwarf the emergency fund or retirement base before it is built.
+      double visible(String key, double val) =>
+          portfolio.hiddenKeys.contains(key) ? 0.0 : val;
+      final double visibleNetWorth =
+          visible('sip', portfolio.sip) +
+          visible('fd', portfolio.fd) +
+          visible('stocks', portfolio.stocks) +
+          visible('pf', portfolio.pf) +
+          visible('crypto', portfolio.crypto) +
+          visible('gold', portfolio.gold) +
+          visible('realEstate', portfolio.realEstate) +
+          visible('nps', portfolio.nps) +
+          visible('etf', portfolio.etf) +
+          visible('reit', portfolio.reit) +
+          visible('p2p', portfolio.p2p) +
+          visible('ppf', portfolio.ppf) +
+          visible('sgb', portfolio.sgb) +
+          visible('bonds', portfolio.bonds) +
+          visible('insurance', portfolio.insurance) +
+          visible('foreignStocks', portfolio.foreignStocks) +
+          visible('vpf', portfolio.vpf) +
+          visible('postOffice', portfolio.postOffice) +
+          visible('chitFund', portfolio.chitFund) +
+          visible('startupEquity', portfolio.startupEquity) +
+          visible('business', portfolio.business) +
+          visible('vehicle', portfolio.vehicle) +
+          visible('jewelry', portfolio.jewelry) +
+          visible('agriLand', portfolio.agriLand) +
+          bankBalance +
+          portfolio.custom.entries.fold(
+            0,
+            (accum, e) =>
+                portfolio.hiddenKeys.contains(e.key) ? accum : accum + e.value,
+          ) -
+          visible('loans', portfolio.loans) -
+          visible('creditCard', portfolio.creditCard) -
+          visible('bnpl', portfolio.bnpl);
+      final goldCap = 0.10 * (visibleNetWorth > 0 ? visibleNetWorth : 0.0);
+
       final result = <String, WealthTarget>{};
       formulaTargets.forEach((key, val) {
         final bool est = !alwaysZero.contains(key) && usingEstimate &&
             !expenseBased.contains(key);
+        double effectiveVal = val;
+        if (key == 'gold' || key == 'sgb') {
+          effectiveVal = val > goldCap ? goldCap : val;
+        }
         result[key] = WealthTarget(
-          effective: val,
+          effective: effectiveVal,
           formula: val,
           isOverridden: false,
           isEstimated: est,

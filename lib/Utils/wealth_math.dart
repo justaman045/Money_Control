@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 /// Linearly interpolates between the two bracketing entries in [milestones].
 /// [age] is clamped to the table's min/max range.
 double milestone(int age, Map<int, double> milestones) {
@@ -45,3 +47,100 @@ const cryptoM = {22: 0.0, 25: 0.1, 30: 0.2, 35: 0.2, 40: 0.2, 50: 0.1, 60: 0.0};
 const reitM = {22: 0.0, 25: 0.0, 30: 0.3, 35: 0.7, 40: 1.5, 50: 3.0, 60: 4.0};
 const p2pM = {22: 0.0, 25: 0.1, 30: 0.3, 35: 0.5, 40: 0.7, 50: 1.0, 60: 1.0};
 const insuranceM = {22: 5.0, 25: 8.0, 30: 10.0, 35: 10.0, 40: 10.0, 50: 8.0, 60: 5.0};
+
+/// Target keys that represent accumulated savings (not coverage or debt).
+/// Insurance is excluded because it is coverage, not a savings corpus.
+const List<String> investableTargetKeys = [
+  'bank', 'fd', 'postOffice',
+  'sip', 'stocks', 'etf', 'foreignStocks', 'startupEquity',
+  'pf', 'ppf', 'vpf', 'nps', 'bonds',
+  'gold', 'sgb', 'crypto', 'reit', 'p2p',
+];
+
+/// Result of an ideal-income calculation.
+class IdealIncome {
+  final double monthlyExpense;
+  final double idealMonthlyIncome;
+  final double idealAnnualIncome;
+  final double monthlySavingsNeeded;
+
+  const IdealIncome({
+    required this.monthlyExpense,
+    required this.idealMonthlyIncome,
+    required this.idealAnnualIncome,
+    required this.monthlySavingsNeeded,
+  });
+}
+
+/// Computes the monthly income the user should aim for so that their current
+/// spending is covered AND every investable target is funded by retirement.
+///
+/// - Savings needed = sum of (target.effective − currentValue) gaps over
+///   [investableTargetKeys], divided by months until age 60 (minimum 1 year).
+/// - A minimum savings rate ([minSavingsRate] of monthly expense) is enforced
+///   so the figure never drops to bare living cost even when targets are met.
+IdealIncome calculateIdealIncome({
+  required double monthlyExpense,
+  required Map<String, double> targetEffective,
+  required Map<String, double> current,
+  required int age,
+  double minSavingsRate = 0.20,
+}) {
+  final expense = monthlyExpense < 0 ? 0.0 : monthlyExpense;
+
+  final monthsToRetirement = ((60 - age) * 12.0).clamp(12, double.infinity);
+  double deficit = 0;
+  for (final key in investableTargetKeys) {
+    final target = targetEffective[key] ?? 0;
+    final have = current[key] ?? 0;
+    final gap = target - have;
+    if (gap > 0) deficit += gap;
+  }
+  final deficitMonthly = deficit / monthsToRetirement;
+  final monthlySavings = deficitMonthly > expense * minSavingsRate
+      ? deficitMonthly
+      : expense * minSavingsRate;
+
+  final idealMonthly = expense + monthlySavings;
+  return IdealIncome(
+    monthlyExpense: expense,
+    idealMonthlyIncome: idealMonthly,
+    idealAnnualIncome: idealMonthly * 12,
+    monthlySavingsNeeded: monthlySavings,
+  );
+}
+
+/// Currency-aware annual income label. INR uses LPA / Cr p.a.; other
+/// currencies use a compact symbol + "/yr" (e.g. $85K/yr).
+String formatAnnualIncome(
+  double annual, {
+  required String currencyCode,
+  required String symbol,
+}) {
+  if (currencyCode == 'INR') {
+    if (annual >= 10000000) {
+      return "$symbol${(annual / 10000000).toStringAsFixed(1)} Cr p.a.";
+    }
+    return "$symbol${(annual / 100000).toStringAsFixed(1)} LPA";
+  }
+  final formatter = NumberFormat.compactCurrency(
+    symbol: symbol,
+    locale: 'en_US',
+    decimalDigits: 1,
+  );
+  return "${formatter.format(annual)}/yr";
+}
+
+/// Compact monthly label (e.g. ₹1.3L or $7.2K). Locale-aware for INR.
+String formatMonthlyIncome(
+  double monthly, {
+  required String currencyCode,
+  required String symbol,
+}) {
+  final formatter = NumberFormat.compactCurrency(
+    symbol: symbol,
+    locale: currencyCode == 'INR' ? 'en_IN' : 'en_US',
+    decimalDigits: 1,
+  );
+  return formatter.format(monthly);
+}

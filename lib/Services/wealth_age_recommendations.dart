@@ -259,6 +259,48 @@ class WealthAgeRecommendations {
     }
   }
 
+  // ── Smart Mode phases ────────────────────────────────────────────────────
+  // Recommended order for a 26-year-old starting out: foundations first,
+  // then long-term growth, alternatives only once the base is solid.
+  static const Map<String, int> _phaseByKey = {
+    // 1 · Start here — liquidity, protection, debt
+    'bank': 1, 'fd': 1, 'postOffice': 1, 'insurance': 1,
+    'loans': 1, 'creditCard': 1, 'bnpl': 1,
+    // 2 · Build wealth — growth + retirement
+    'sip': 2, 'stocks': 2, 'etf': 2, 'pf': 2, 'ppf': 2, 'vpf': 2,
+    'nps': 2, 'bonds': 2, 'realEstate': 2, 'agriLand': 2, 'vehicle': 2,
+    // 3 · Advanced — alternatives & high risk
+    'gold': 3, 'sgb': 3, 'jewelry': 3, 'crypto': 3, 'reit': 3, 'p2p': 3,
+    'foreignStocks': 3, 'startupEquity': 3, 'chitFund': 3, 'business': 3,
+  };
+
+  /// Recommended order phase for a card key (1 = start here … 3 = advanced).
+  static int phaseFor(String key) => _phaseByKey[key] ?? 2;
+
+  static String phaseName(int phase) => switch (phase) {
+        1 => 'Start here',
+        2 => 'Build wealth',
+        _ => 'Advanced',
+      };
+
+  static String phaseSubtitle(int phase) => switch (phase) {
+        1 => 'Emergency fund, protection and paying off debt come first.',
+        2 => 'Long-term growth and retirement accumulation for the long run.',
+        _ => 'Diversifiers for when your foundation is solid.',
+      };
+
+  static IconData phaseIcon(int phase) => switch (phase) {
+        1 => Icons.shield_outlined,
+        2 => Icons.trending_up_rounded,
+        _ => Icons.auto_awesome,
+      };
+
+  static Color phaseColor(int phase) => switch (phase) {
+        1 => AppColors.success,
+        2 => AppColors.primary,
+        _ => const Color(0xFF00E5FF),
+      };
+
   /// Show the age-based wealth prompt dialog
   /// Returns true if user enabled age-based, false otherwise
   static Future<bool> showAgePrompt(BuildContext context) async {

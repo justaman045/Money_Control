@@ -8,6 +8,7 @@ import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Models/wealth_data.dart';
 import 'package:money_control/Services/wealth_service.dart';
+import 'package:money_control/Utils/wealth_math.dart';
 import 'package:money_control/Components/skeleton_loader.dart';
 import 'package:money_control/Services/wealth_age_recommendations.dart';
 
@@ -46,6 +47,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
   List<Map<String, dynamic>> smartInsights = [];
   int? userAge;
   GeoResult? geoResult;
+  double actualMonthlyIncome = 0;
   final ValueNotifier<bool> _isBottomBarVisible = ValueNotifier(true);
   bool _ageBasedEnabled = false;
   bool _agePromptChecked = false;
@@ -98,6 +100,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
 
       final balance = WealthService.calculateBankBalance(transactions);
       final insights = WealthService.generateSmartInsights(p, transactions);
+      final actualIncome = WealthService.calculateAverageMonthlyIncome(transactions);
 
       // Use cached geo if available immediately, else baseline for first render
       final GeoResult? quickGeo = await GeoService.getCached();
@@ -106,6 +109,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
         transactions,
         userProfile,
         baselineMonthlyIncome: quickGeo?.baselineMonthlyIncome ?? 25000,
+        bankBalance: balance,
       );
 
       final age = userProfile?.calculatedAge;
@@ -121,6 +125,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
           bankBalance = balance;
           smartInsights = insights;
           assetTargets = targets;
+          actualMonthlyIncome = actualIncome;
           userAge = age;
           geoResult = quickGeo;
           _ageBasedEnabled = ageBasedEnabled;
@@ -147,6 +152,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
           transactions,
           userProfile,
           baselineMonthlyIncome: liveGeo.baselineMonthlyIncome,
+          bankBalance: bankBalance,
         );
         if (mounted) {
           setState(() {
@@ -318,6 +324,17 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
                         _buildPieChart(scheme),
                         SizedBox(height: 20.h),
                         Text(
+                          "Ideal Income",
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                        SizedBox(height: 10.h),
+                        _buildIdealIncomeCard(scheme),
+                        SizedBox(height: 20.h),
+                        Text(
                           "Smart Suggestions",
                           style: TextStyle(
                             fontSize: 18.sp,
@@ -432,7 +449,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
             child: Text(
               _ageBasedEnabled
                   ? "Smart Mode · Age $userAge"
-                  : "Age $userAge · Showing all cards",
+                  : "Custom Mode · Age $userAge",
               style: TextStyle(
                 color: _ageBasedEnabled ? AppColors.primary : Colors.white60,
                 fontSize: 13.sp,
@@ -542,151 +559,104 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
         _assetCard(title, amount, key, icon, color, scheme,
             onTapOverride: () => Get.to(() => AssetDetailScreen(config: cfg)));
 
-    List<Widget> addIf(String key, Widget Function() builder) {
-      if (p.hiddenKeys.contains(key)) return [];
-      if (_ageBasedEnabled && !_recommendedKeys.contains(key)) return [];
-      return [builder()];
+    // Visibility: Smart Mode follows age recommendations; Custom Mode respects manual hides
+    bool isVisible(String key) {
+      if (_ageBasedEnabled) return _recommendedKeys.contains(key);
+      return !p.hiddenKeys.contains(key);
     }
+
+    // ── all asset cards (single source, grouped per mode) ──────────────────
+    final hasLoanController = Get.isRegistered<LoanController>();
+    final loanController = hasLoanController ? Get.find<LoanController>() : null;
+    final loanCount = loanController?.loans.length ?? 0;
+
+    final allCards = <MapEntry<String, Widget>>[
+      MapEntry('bank', _assetCard("Cash / Bank", bankBalance, 'bank', Icons.account_balance, Colors.teal, scheme,
+          readOnly: true,
+          secondaryLabel: monthlyExpense > 0 ? "Monthly Expense" : null,
+          secondaryValue: monthlyExpense > 0 ? monthlyExpense : null)),
+      MapEntry('fd',         detailCard("FD / RD",             p.fd,         'fd',         Icons.savings,           Colors.orange,        AssetConfigs.fd)),
+      MapEntry('ppf',        detailCard("PPF",                 p.ppf,        'ppf',        Icons.savings_outlined,   Colors.lightBlue,     AssetConfigs.ppf)),
+      MapEntry('postOffice', detailCard("Post Office Schemes", p.postOffice, 'postOffice', Icons.local_post_office, Colors.red.shade300,  AssetConfigs.postOffice)),
+      MapEntry('bonds',      detailCard("Bonds (Govt/Corp)",   p.bonds,      'bonds',      Icons.receipt_long,       Colors.blueGrey,      AssetConfigs.bonds)),
+      MapEntry('chitFund',   detailCard("Chit Fund",           p.chitFund,   'chitFund',   Icons.groups,             Colors.teal.shade300, AssetConfigs.chitFund)),
+      MapEntry('stocks',       detailCard("Stocks",             p.stocks,       'stocks',       Icons.show_chart,         Colors.purple,      AssetConfigs.stocks)),
+      MapEntry('sip',          detailCard("Mutual Funds (SIP)", p.sip,          'sip',          Icons.pie_chart,          Colors.blue,        AssetConfigs.sip)),
+      MapEntry('etf',          detailCard("ETFs",               p.etf,          'etf',          Icons.stacked_line_chart, Colors.cyan,        AssetConfigs.etf)),
+      MapEntry('foreignStocks',detailCard("Foreign Stocks",     p.foreignStocks,'foreignStocks',Icons.language,           Colors.deepPurple,  AssetConfigs.foreignStocks)),
+      MapEntry('startupEquity',detailCard("Angel / Startup",    p.startupEquity,'startupEquity',Icons.rocket_launch,      Colors.orange,      AssetConfigs.startupEquity)),
+      MapEntry('pf',  detailCard("PF / EPF",     p.pf,  'pf',  Icons.account_balance_wallet,         Colors.green,          AssetConfigs.pf)),
+      MapEntry('vpf', detailCard("Voluntary PF", p.vpf, 'vpf', Icons.account_balance_wallet_outlined, Colors.green.shade300, AssetConfigs.vpf)),
+      MapEntry('nps', detailCard("NPS",           p.nps, 'nps', Icons.elderly,                         Colors.indigo,         AssetConfigs.nps)),
+      MapEntry('gold',    detailCard("Gold / Silver",        p.gold,    'gold',    Icons.grid_goldenratio,  Colors.amber,               AssetConfigs.gold)),
+      MapEntry('sgb',     detailCard("Sovereign Gold Bonds", p.sgb,     'sgb',     Icons.monetization_on,   Colors.amber.shade300,      AssetConfigs.sgb)),
+      MapEntry('jewelry', detailCard("Jewelry / Diamonds",   p.jewelry, 'jewelry', Icons.diamond,           Colors.pink.shade300,       AssetConfigs.jewelry)),
+      MapEntry('crypto',  detailCard("Crypto",               p.crypto,  'crypto',  Icons.currency_bitcoin,  Colors.deepOrange,          AssetConfigs.crypto)),
+      MapEntry('reit',    detailCard("REITs",                p.reit,    'reit',    Icons.apartment,         Colors.tealAccent.shade700, AssetConfigs.reit)),
+      MapEntry('p2p',     detailCard("P2P Lending",          p.p2p,     'p2p',     Icons.people_alt,        Colors.lime,                AssetConfigs.p2p)),
+      MapEntry('realEstate', _assetCard("Real Estate",  p.realEstate, 'realEstate', Icons.domain,         Colors.brown,            scheme, onTapOverride: () => Get.to(() => const RealEstateDetailScreen()))),
+      MapEntry('agriLand',   detailCard("Agricultural Land", p.agriLand, 'agriLand', Icons.grass,          Colors.green,            AssetConfigs.agriLand)),
+      MapEntry('vehicle',    _assetCard("Vehicle(s)",   p.vehicle,    'vehicle',    Icons.directions_car, Colors.blueGrey.shade300, scheme, onTapOverride: () => Get.to(() => const VehicleDetailScreen()))),
+      MapEntry('insurance', _assetCard("Life Insurance / ULIP", p.insurance, 'insurance', Icons.health_and_safety, Colors.pink, scheme, coverageStyle: true, onTapOverride: () => Get.to(() => const InsurancePolicyScreen()))),
+      MapEntry('business',  detailCard("Business Capital", p.business, 'business', Icons.business_center, Colors.brown.shade300, AssetConfigs.business)),
+      MapEntry('loans', _assetCard("Loans / Liabilities", loanController?.totalOutstanding ?? 0, 'loans',
+          Icons.money_off, Colors.red, scheme,
+          secondaryLabel: loanCount > 0 ? "$loanCount loan${loanCount > 1 ? 's' : ''}" : null,
+          onTapOverride: () => Get.to(() => const LoanTrackerScreen()))),
+      MapEntry('creditCard', _assetCard("Credit Card Outstanding", p.creditCard, 'creditCard', Icons.credit_card, Colors.red.shade700, scheme,
+          onTapOverride: () => Get.to(() => const CreditCardDetailScreen()))),
+      MapEntry('bnpl', detailCard("BNPL / Pay Later", p.bnpl, 'bnpl', Icons.schedule, Colors.deepOrange.shade700, AssetConfigs.bnpl)),
+    ];
 
     // ── sections ─────────────────────────────────────────────────────────────
     final sections = <Widget>[];
 
-    // 1. Liquid & Fixed Income
-    final liquidCards = <Widget>[
-      ...addIf('bank', () => _assetCard("Cash / Bank", bankBalance, 'bank', Icons.account_balance, Colors.teal, scheme,
-          readOnly: true,
-          secondaryLabel: monthlyExpense > 0 ? "Monthly Expense" : null,
-          secondaryValue: monthlyExpense > 0 ? monthlyExpense : null)),
-      ...addIf('fd',         () => detailCard("FD / RD",             p.fd,         'fd',         Icons.savings,          Colors.orange,       AssetConfigs.fd)),
-      ...addIf('ppf',        () => detailCard("PPF",                 p.ppf,        'ppf',        Icons.savings_outlined,  Colors.lightBlue,    AssetConfigs.ppf)),
-      ...addIf('postOffice', () => detailCard("Post Office Schemes", p.postOffice, 'postOffice', Icons.local_post_office, Colors.red.shade300, AssetConfigs.postOffice)),
-      ...addIf('bonds',      () => detailCard("Bonds (Govt/Corp)",   p.bonds,      'bonds',      Icons.receipt_long,      Colors.blueGrey,     AssetConfigs.bonds)),
-      ...addIf('chitFund',   () => detailCard("Chit Fund",           p.chitFund,   'chitFund',   Icons.groups,            Colors.teal.shade300,AssetConfigs.chitFund)),
-    ];
-    if (liquidCards.isNotEmpty) {
-      sections.add(_sectionHeader("Liquid & Fixed Income", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: liquidCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
+    if (_ageBasedEnabled) {
+      // Smart Mode: guide users through a recommended order (phases)
+      for (final phase in const [1, 2, 3]) {
+        final phaseCards = allCards
+            .where((e) => WealthAgeRecommendations.phaseFor(e.key) == phase && isVisible(e.key))
+            .map((e) => e.value)
+            .toList();
+        if (phaseCards.isEmpty) continue;
+        sections.add(_phaseHeader(phase, scheme));
+        sections.add(GridView.count(
+          crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
+          children: phaseCards,
+        ));
+        sections.add(SizedBox(height: 20.h));
+      }
+    } else {
+      // Custom Mode: grouped by asset class
+      const groups = <(String, List<String>)>[
+        ("Liquid & Fixed Income", ['bank', 'fd', 'ppf', 'postOffice', 'bonds', 'chitFund']),
+        ("Equity & Growth", ['stocks', 'sip', 'etf', 'foreignStocks', 'startupEquity']),
+        ("Retirement", ['pf', 'vpf', 'nps']),
+        ("Alternative Assets", ['gold', 'sgb', 'jewelry', 'crypto', 'reit', 'p2p']),
+        ("Physical Assets", ['realEstate', 'agriLand', 'vehicle']),
+        ("Protection & Business", ['insurance', 'business']),
+        ("Liabilities", ['loans', 'creditCard', 'bnpl']),
+      ];
+      for (final group in groups) {
+        final groupCards = group.$2
+            .where(isVisible)
+            .map((key) => allCards.firstWhere((e) => e.key == key).value)
+            .toList();
+        if (groupCards.isEmpty) continue;
+        sections.add(_sectionHeader(group.$1, scheme));
+        sections.add(GridView.count(
+          crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
+          children: groupCards,
+        ));
+        sections.add(SizedBox(height: 20.h));
+      }
     }
 
-    // 2. Equity & Growth
-    final equityCards = <Widget>[
-      ...addIf('stocks',       () => detailCard("Stocks",             p.stocks,       'stocks',       Icons.show_chart,         Colors.purple,      AssetConfigs.stocks)),
-      ...addIf('sip',          () => detailCard("Mutual Funds (SIP)", p.sip,          'sip',          Icons.pie_chart,          Colors.blue,        AssetConfigs.sip)),
-      ...addIf('etf',          () => detailCard("ETFs",               p.etf,          'etf',          Icons.stacked_line_chart, Colors.cyan,        AssetConfigs.etf)),
-      ...addIf('foreignStocks',() => detailCard("Foreign Stocks",     p.foreignStocks,'foreignStocks',Icons.language,           Colors.deepPurple,  AssetConfigs.foreignStocks)),
-      ...addIf('startupEquity',() => detailCard("Angel / Startup",    p.startupEquity,'startupEquity',Icons.rocket_launch,      Colors.orange,      AssetConfigs.startupEquity)),
-    ];
-    if (equityCards.isNotEmpty) {
-      sections.add(_sectionHeader("Equity & Growth", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: equityCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
-    }
-
-    // 3. Retirement
-    final retirementCards = <Widget>[
-      ...addIf('pf',  () => detailCard("PF / EPF",     p.pf,  'pf',  Icons.account_balance_wallet,          Colors.green,           AssetConfigs.pf)),
-      ...addIf('vpf', () => detailCard("Voluntary PF", p.vpf, 'vpf', Icons.account_balance_wallet_outlined,  Colors.green.shade300,  AssetConfigs.vpf)),
-      ...addIf('nps', () => detailCard("NPS",           p.nps, 'nps', Icons.elderly,                          Colors.indigo,          AssetConfigs.nps)),
-    ];
-    if (retirementCards.isNotEmpty) {
-      sections.add(_sectionHeader("Retirement", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: retirementCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
-    }
-
-    // 4. Alternative Assets
-    final altCards = <Widget>[
-      ...addIf('gold',    () => detailCard("Gold / Silver",        p.gold,    'gold',    Icons.grid_goldenratio,  Colors.amber,              AssetConfigs.gold)),
-      ...addIf('sgb',     () => detailCard("Sovereign Gold Bonds", p.sgb,     'sgb',     Icons.monetization_on,   Colors.amber.shade300,     AssetConfigs.sgb)),
-      ...addIf('jewelry', () => detailCard("Jewelry / Diamonds",   p.jewelry, 'jewelry', Icons.diamond,           Colors.pink.shade300,      AssetConfigs.jewelry)),
-      ...addIf('crypto',  () => detailCard("Crypto",               p.crypto,  'crypto',  Icons.currency_bitcoin,  Colors.deepOrange,         AssetConfigs.crypto)),
-      ...addIf('reit',    () => detailCard("REITs",                p.reit,    'reit',    Icons.apartment,         Colors.tealAccent.shade700,AssetConfigs.reit)),
-      ...addIf('p2p',     () => detailCard("P2P Lending",          p.p2p,     'p2p',     Icons.people_alt,        Colors.lime,               AssetConfigs.p2p)),
-    ];
-    if (altCards.isNotEmpty) {
-      sections.add(_sectionHeader("Alternative Assets", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: altCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
-    }
-
-    // 5. Physical Assets
-    final physicalCards = <Widget>[
-      ...addIf('realEstate', () => _assetCard("Real Estate",  p.realEstate, 'realEstate', Icons.domain,         Colors.brown,            scheme, onTapOverride: () => Get.to(() => const RealEstateDetailScreen()))),
-      ...addIf('agriLand',   () => detailCard("Agricultural Land", p.agriLand, 'agriLand', Icons.grass,          Colors.green,            AssetConfigs.agriLand)),
-      ...addIf('vehicle',    () => _assetCard("Vehicle(s)",   p.vehicle,    'vehicle',    Icons.directions_car, Colors.blueGrey.shade300, scheme, onTapOverride: () => Get.to(() => const VehicleDetailScreen()))),
-    ];
-    if (physicalCards.isNotEmpty) {
-      sections.add(_sectionHeader("Physical Assets", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: physicalCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
-    }
-
-    // 6. Protection & Business
-    final protectionCards = <Widget>[
-      ...addIf('insurance', () => _assetCard("Life Insurance / ULIP", p.insurance, 'insurance', Icons.health_and_safety, Colors.pink, scheme, onTapOverride: () => Get.to(() => const InsurancePolicyScreen()))),
-      ...addIf('business',  () => detailCard("Business Capital", p.business, 'business', Icons.business_center, Colors.brown.shade300, AssetConfigs.business)),
-    ];
-    if (protectionCards.isNotEmpty) {
-      sections.add(_sectionHeader("Protection & Business", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: protectionCards,
-      ));
-      sections.add(SizedBox(height: 20.h));
-    }
-
-    // 7. Liabilities
-    final hasLoanController = Get.isRegistered<LoanController>();
-    final loanController = hasLoanController ? Get.find<LoanController>() : null;
-    final loanCount = loanController?.loans.length ?? 0;
-    final liabilityCards = <Widget>[
-      ...addIf('loans', () => _assetCard("Loans / Liabilities", loanController?.totalOutstanding ?? 0, 'loans',
-          Icons.money_off, Colors.red, scheme,
-          secondaryLabel: loanCount > 0 ? "$loanCount loan${loanCount > 1 ? 's' : ''}" : null,
-          onTapOverride: () => Get.to(() => const LoanTrackerScreen()))),
-      ...addIf('creditCard', () => _assetCard("Credit Card Outstanding", p.creditCard, 'creditCard', Icons.credit_card, Colors.red.shade700, scheme,
-          onTapOverride: () => Get.to(() => const CreditCardDetailScreen()))),
-      ...addIf('bnpl', () => detailCard("BNPL / Pay Later", p.bnpl, 'bnpl', Icons.schedule, Colors.deepOrange.shade700, AssetConfigs.bnpl)),
-    ];
-    if (liabilityCards.isNotEmpty) {
-      sections.add(_sectionHeader("Liabilities", scheme));
-      sections.add(GridView.count(
-        crossAxisCount: Responsive.wealthGridColumns(context), shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12.w, mainAxisSpacing: 12.h, childAspectRatio: Responsive.childAspectRatio(context),
-        children: liabilityCards,
-      ));
-    }
-
-    // 8. Custom Assets
+    // Custom Assets
     if (p.custom.isNotEmpty) {
       final customCards = p.custom.entries
           .where((e) => !p.hiddenKeys.contains(e.key))
@@ -714,6 +684,46 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: sections,
+    );
+  }
+
+  Widget _phaseHeader(int phase, ColorScheme scheme) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h, top: 4.h),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            WealthAgeRecommendations.phaseIcon(phase),
+            size: 18.sp,
+            color: WealthAgeRecommendations.phaseColor(phase),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Phase $phase · ${WealthAgeRecommendations.phaseName(phase)}",
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  WealthAgeRecommendations.phaseSubtitle(phase),
+                  style: TextStyle(
+                    fontSize: 11.sp,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -813,6 +823,7 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
     double? secondaryValue,
     VoidCallback? onTapOverride,
     bool? recommendedOverride,
+    bool coverageStyle = false,
   }) {
     final isRecommended = recommendedOverride ?? _recommendedKeys.contains(key);
     final currencyCode = CurrencyController.to.currencyCode.value;
@@ -926,8 +937,12 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
                   Expanded(
                     child: Text(
                       wealthTarget?.isEstimated == true
-                          ? "Suggested: ${formatter.format(target)}"
-                          : "Target: ${formatter.format(target)}",
+                          ? (coverageStyle
+                              ? "Suggested coverage: ${formatter.format(target)}"
+                              : "Suggested: ${formatter.format(target)}")
+                          : (coverageStyle
+                              ? "Coverage: ${formatter.format(target)}"
+                              : "Target: ${formatter.format(target)}"),
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: wealthTarget?.isEstimated == true
@@ -1307,14 +1322,44 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
                         ),
                       ),
                       SizedBox(height: 16.h),
+                      if (_ageBasedEnabled)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: 12.h),
+                          child: Container(
+                            padding: EdgeInsets.all(10.w),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.auto_awesome,
+                                  size: 16.sp,
+                                  color: AppColors.primary,
+                                ),
+                                SizedBox(width: 8.w),
+                                Expanded(
+                                  child: Text(
+                                    "Smart Mode is on — visibility follows your age recommendations. Turn it off to customize manually.",
+                                    style: TextStyle(
+                                      fontSize: 11.sp,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       Flexible(
                         child: ListView(
                           shrinkWrap: true,
                           children: assets.entries.map((e) {
                             final key = e.key;
                             final title = e.value;
-                            final isVisible = !hidden.contains(key);
                             final isRec = _recommendedKeys.contains(key);
+                            final isVisible = _ageBasedEnabled ? isRec : !hidden.contains(key);
                             return CheckboxListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Row(
@@ -1353,15 +1398,17 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
                               side: BorderSide(
                                 color: Colors.white.withValues(alpha: 0.5),
                               ),
-                              onChanged: (val) {
-                                setState(() {
-                                  if (val == true) {
-                                    hidden.remove(key);
-                                  } else {
-                                    hidden.add(key);
-                                  }
-                                });
-                              },
+                              onChanged: _ageBasedEnabled
+                                  ? null
+                                  : (val) {
+                                      setState(() {
+                                        if (val == true) {
+                                          hidden.remove(key);
+                                        } else {
+                                          hidden.add(key);
+                                        }
+                                      });
+                                    },
                             );
                           }).toList(),
                         ),
@@ -1424,7 +1471,12 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
     // Check visible total instead of totalAssets
 
     final p = portfolio!;
-    final hidden = p.hiddenKeys;
+    final hidden = _ageBasedEnabled
+        ? WealthAgeRecommendations.allCards
+            .map((c) => c.key)
+            .where((k) => !_recommendedKeys.contains(k))
+            .toSet()
+        : p.hiddenKeys;
     final List<PieChartSectionData> sections = [];
 
     void add(double val, String key, Color color, String title) {
@@ -1480,12 +1532,195 @@ class _WealthBuilderScreenState extends State<WealthBuilderScreen> {
     );
   }
 
+  Widget _buildIdealIncomeCard(ColorScheme scheme) {
+    if (portfolio == null) return const SizedBox.shrink();
+
+    final code = CurrencyController.to.currencyCode.value;
+    final symbol = CurrencyController.to.currencySymbol.value;
+
+    // Effective monthly expense = bank target formula ÷ cash-months
+    final cashMonths = userAge == null
+        ? 6
+        : (userAge! < 30 ? 3 : (userAge! > 50 ? 12 : 6));
+    final monthlyExpense = cashMonths > 0
+        ? (assetTargets['bank']?.formula ?? 0) / cashMonths
+        : 0.0;
+
+    final current = <String, double>{
+      'bank': bankBalance,
+      'fd': portfolio!.fd,
+      'postOffice': portfolio!.postOffice,
+      'sip': portfolio!.sip,
+      'stocks': portfolio!.stocks,
+      'etf': portfolio!.etf,
+      'foreignStocks': portfolio!.foreignStocks,
+      'startupEquity': portfolio!.startupEquity,
+      'pf': portfolio!.pf,
+      'ppf': portfolio!.ppf,
+      'vpf': portfolio!.vpf,
+      'nps': portfolio!.nps,
+      'bonds': portfolio!.bonds,
+      'gold': portfolio!.gold,
+      'sgb': portfolio!.sgb,
+      'crypto': portfolio!.crypto,
+      'reit': portfolio!.reit,
+      'p2p': portfolio!.p2p,
+    };
+
+    final targetEffective = <String, double>{
+      for (final key in investableTargetKeys)
+        key: assetTargets[key]?.effective ?? 0,
+    };
+
+    final result = calculateIdealIncome(
+      monthlyExpense: monthlyExpense,
+      targetEffective: targetEffective,
+      current: current,
+      age: userAge ?? 30,
+    );
+
+    final savingsLabel =
+        formatMonthlyIncome(result.monthlySavingsNeeded,
+            currencyCode: code, symbol: symbol);
+
+    return GlassContainer(
+      borderRadius: BorderRadius.circular(24.r),
+      padding: EdgeInsets.all(20.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.trending_up_rounded, color: AppColors.success, size: 18.sp),
+              SizedBox(width: 8.w),
+              Text(
+                "What you should earn to stay on track",
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 16.h),
+          _incomeFigure(
+            scheme,
+            label: "Ideal Monthly Income",
+            value: formatMonthlyIncome(result.idealMonthlyIncome,
+                currencyCode: code, symbol: symbol),
+            sub: "incl. savings of $savingsLabel /mo",
+            color: AppColors.primary,
+          ),
+          SizedBox(height: 16.h),
+          _incomeFigure(
+            scheme,
+            label: "Ideal Annual Income",
+            value: formatAnnualIncome(result.idealAnnualIncome,
+                currencyCode: code, symbol: symbol),
+            sub: "annually",
+            color: AppColors.success,
+          ),
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 12.h),
+            child: Divider(color: scheme.onSurface.withValues(alpha: 0.15), height: 1),
+          ),
+          _contextRow(scheme, Icons.receipt_long_outlined, "Current monthly expense",
+              formatMonthlyIncome(result.monthlyExpense,
+                  currencyCode: code, symbol: symbol)),
+          if (actualMonthlyIncome > 0)
+            _contextRow(scheme, Icons.payments_outlined, "You earn today",
+                formatMonthlyIncome(actualMonthlyIncome,
+                    currencyCode: code, symbol: symbol)),
+          if (geoResult != null && geoResult!.baselineMonthlyIncome > 0)
+            _contextRow(scheme, Icons.location_city_outlined, "Typical income in your area",
+                formatMonthlyIncome(geoResult!.baselineMonthlyIncome.toDouble(),
+                    currencyCode: code, symbol: symbol)),
+        ],
+      ),
+    );
+  }
+
+  Widget _incomeFigure(
+    ColorScheme scheme, {
+    required String label,
+    required String value,
+    required String sub,
+    required Color color,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: scheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 26.sp,
+            fontWeight: FontWeight.w800,
+            color: color,
+            letterSpacing: 0.5,
+          ),
+        ),
+        SizedBox(height: 2.h),
+        Text(
+          sub,
+          style: TextStyle(
+            fontSize: 10.sp,
+            color: scheme.onSurface.withValues(alpha: 0.5),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _contextRow(ColorScheme scheme, IconData icon, String label, String value) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4.h),
+      child: Row(
+        children: [
+          Icon(icon, size: 16.sp, color: scheme.onSurface.withValues(alpha: 0.5)),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: scheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Placeholder comment in previous edit removed the method. Restoring it.
   Widget _buildNetWorthCard(ColorScheme scheme) {
     double total = 0;
     if (portfolio != null) {
       final p = portfolio!;
-      final hidden = p.hiddenKeys;
+      final hidden = _ageBasedEnabled
+          ? WealthAgeRecommendations.allCards
+              .map((c) => c.key)
+              .where((k) => !_recommendedKeys.contains(k))
+              .toSet()
+          : p.hiddenKeys;
 
       void add(String key, double val) { if (!hidden.contains(key)) total += val; }
       void sub(String key, double val) { if (!hidden.contains(key)) total -= val; }

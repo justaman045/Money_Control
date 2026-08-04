@@ -104,4 +104,115 @@ void main() {
       expect(compact(99999), '100K');
     });
   });
+
+  group('calculateIdealIncome()', () {
+    test('splits target deficits over months until retirement', () {
+      // age 30 → 360 months. Bank 3L + sip 1Cr + fd 3L = 1.06Cr deficit.
+      final result = calculateIdealIncome(
+        monthlyExpense: 50000,
+        age: 30,
+        targetEffective: {'bank': 300000, 'sip': 10000000, 'fd': 300000},
+        current: {'bank': 0, 'sip': 0, 'fd': 0},
+      );
+      expect(result.monthlyExpense, 50000);
+      // 10600000 / 360 = 29444.44 > 20% floor (10000)
+      expect(result.monthlySavingsNeeded, closeTo(29444.44, 0.1));
+      expect(result.idealMonthlyIncome, closeTo(79444.44, 0.1));
+      expect(result.idealAnnualIncome, closeTo(953333.33, 1));
+    });
+
+    test('enforces 20% savings floor when targets are met', () {
+      final result = calculateIdealIncome(
+        monthlyExpense: 50000,
+        age: 30,
+        targetEffective: {'bank': 300000, 'sip': 500000},
+        current: {'bank': 300000, 'sip': 500000},
+      );
+      expect(result.monthlySavingsNeeded, 10000);
+      expect(result.idealMonthlyIncome, 60000);
+    });
+
+    test('excludes insurance coverage from deficits', () {
+      // 18.3L investable deficit vs 5Cr insurance — insurance must not count.
+      final result = calculateIdealIncome(
+        monthlyExpense: 50000,
+        age: 30,
+        targetEffective: {'bank': 300000, 'sip': 18000000, 'insurance': 50000000},
+        current: {'bank': 0, 'sip': 0, 'insurance': 0},
+      );
+      // (300000 + 18000000) / 360 = 50833.33
+      expect(result.monthlySavingsNeeded, closeTo(50833.33, 0.1));
+      expect(result.idealMonthlyIncome, closeTo(100833.33, 0.1));
+    });
+
+    test('clamps horizon to 12 months at retirement age', () {
+      final result = calculateIdealIncome(
+        monthlyExpense: 50000,
+        age: 60,
+        targetEffective: {'bank': 300000},
+        current: {'bank': 0},
+      );
+      // 300000 / 12 = 25000 > floor
+      expect(result.monthlySavingsNeeded, 25000);
+      expect(result.idealMonthlyIncome, 75000);
+    });
+
+    test('handles empty targets and zero expense', () {
+      final result = calculateIdealIncome(
+        monthlyExpense: 0,
+        age: 30,
+        targetEffective: {},
+        current: {},
+      );
+      expect(result.idealMonthlyIncome, 0);
+      expect(result.idealAnnualIncome, 0);
+    });
+  });
+
+  group('formatAnnualIncome()', () {
+    test('formats INR as LPA', () {
+      expect(
+        formatAnnualIncome(1580000, currencyCode: 'INR', symbol: '₹'),
+        '₹15.8 LPA',
+      );
+    });
+
+    test('formats INR as Cr p.a. above 1 Cr', () {
+      expect(
+        formatAnnualIncome(12000000, currencyCode: 'INR', symbol: '₹'),
+        '₹1.2 Cr p.a.',
+      );
+    });
+
+    test('formats non-INR currencies with /yr compact', () {
+      expect(
+        formatAnnualIncome(85000, currencyCode: 'USD', symbol: r'$'),
+        r'$85K/yr',
+      );
+      expect(
+        formatAnnualIncome(1200000, currencyCode: 'EUR', symbol: '€'),
+        '€1.2M/yr',
+      );
+    });
+  });
+
+  group('formatMonthlyIncome()', () {
+    test('uses en_IN compact for INR', () {
+      expect(
+        formatMonthlyIncome(130000, currencyCode: 'INR', symbol: '₹'),
+        '₹1.3L',
+      );
+      expect(
+        formatMonthlyIncome(7200, currencyCode: 'INR', symbol: '₹'),
+        '₹7.2K',
+      );
+    });
+
+    test('uses en_US compact for other currencies', () {
+      expect(
+        formatMonthlyIncome(85000, currencyCode: 'USD', symbol: r'$'),
+        r'$85K',
+      );
+    });
+  });
 }
