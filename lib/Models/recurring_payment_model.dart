@@ -61,8 +61,13 @@ class RecurringPayment {
 
   static double _parseNum(dynamic value) {
     if (value == null) return 0;
-    if (value is num) return value.toDouble();
-    if (value is String) return double.tryParse(value) ?? 0;
+    if (value is num) return roundAmount(value.toDouble());
+    if (value is String) return roundAmount(double.tryParse(value) ?? 0);
     return 0;
   }
+
+  // Normalize money to paisa precision (2 decimals). Guards against legacy
+  // float garbage like 10242.621637042335 leaking into new transactions.
+  static double roundAmount(double value) =>
+      double.parse(value.toStringAsFixed(2));
 }

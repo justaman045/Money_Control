@@ -317,6 +317,8 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
     final isPaused = !item.isActive;
     final isPending =
         item.isActive && !item.autoPay && !item.nextDueDate.isAfter(now);
+    final isAutoMissed =
+        item.isActive && item.autoPay && !item.nextDueDate.isAfter(now);
 
     return Opacity(
       opacity: isPaused ? 0.6 : (isPaid ? 0.8 : 1.0),
@@ -517,6 +519,32 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                       ),
                     ),
                   ),
+                  if (isAutoMissed) ...[
+                    SizedBox(height: 6.h),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 4.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6.r),
+                        border: Border.all(
+                          color: Colors.redAccent.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        "AUTO-PAY MISSED",
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.redAccent,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -675,7 +703,7 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
 
   Future<void> _save() async {
     if (_formKey.currentState!.validate()) {
-      final amount = double.tryParse(_amountCtrl.text) ?? 0;
+      final amount = RecurringPayment.roundAmount(double.tryParse(_amountCtrl.text) ?? 0);
       if (amount <= 0) {
         Get.snackbar("Invalid Amount", "Enter a valid amount greater than 0");
         return;

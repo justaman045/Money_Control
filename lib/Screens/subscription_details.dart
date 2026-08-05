@@ -9,6 +9,7 @@ import 'package:money_control/Models/recurring_payment_model.dart';
 import 'package:money_control/Services/recurring_service.dart';
 import 'package:money_control/Screens/transaction_details.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
+import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Models/transaction.dart';
 import 'package:money_control/Services/error_handler.dart';
 import 'package:money_control/Utils/responsive.dart';
@@ -26,6 +27,23 @@ class SubscriptionDetailsScreen extends StatefulWidget {
 class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
   final RecurringService _service = RecurringService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _repairUnlinkedHistory();
+  }
+
+  // Backfill recurringPaymentId onto auto-pay transactions that lost their
+  // link, so they show up in the history stream below. Fire-and-forget: the
+  // StreamBuilder re-renders automatically once the backfill lands.
+  Future<void> _repairUnlinkedHistory() async {
+    try {
+      await _service.repairUnlinkedTransactions(widget.payment);
+    } catch (e) {
+      debugPrint('repairUnlinkedTransactions failed: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -429,41 +447,145 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     Color textColor,
     RecurringPayment payment,
   ) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () => _showMarkPaidDialog(context, isDark, payment),
-        icon: Icon(Icons.check_circle_outline_rounded, size: 18.sp),
-        label: const Text("Mark Paid"),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF6C63FF),
-          foregroundColor: Colors.white,
-          padding: EdgeInsets.symmetric(vertical: 12.h),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12.r),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          onPressed: () => _showMarkPaidDialog(context, isDark, payment),
+          icon: Icon(Icons.check_circle_outline_rounded, size: 18.sp),
+          label: const Text("Mark Paid"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6C63FF),
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.symmetric(vertical: 12.h),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.r),
+            ),
           ),
         ),
-      ),
+        if (!payment.autoPay) ...[
+          SizedBox(height: 12.h),
+          OutlinedButton.icon(
+            onPressed: () => _showLinkTransactionSheet(context, isDark, payment),
+            icon: Icon(Icons.link_rounded, size: 18.sp),
+            label: const Text("Link Transaction"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: textColor,
+              side: BorderSide(
+                color: textColor.withValues(alpha: 0.3),
+              ),
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+            ),
+          ),
+        ],
+      ],
     ).animate().fadeIn(delay: 200.ms);
   }
 
+  void _showLinkTransactionSheet(
+    BuildContext context,
+    bool isDark,
+    RecurringPayment payment,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+      constraints: BoxConstraints(maxWidth: Responsive.sheetMaxWidth(context)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      builder: (context) => _LinkTransactionSheet(
+        payment: payment,
+        isDark: isDark,
+      ),
+    );
+  }
+
+  // Merged history stream. Primary: transactions explicitly linked via
+  // recurringPaymentId. Fallback: transactions whose note starts with
+  // "Auto-payment for <title>" — this catches legacy auto-pay transactions
+  // that lost their link (older builds never wrote recurringPaymentId) or
+  // whose link points to a recreated payment doc. Single-field queries only,
+  // so no composite Firestore index is required.
+  Stream<List<QueryDocumentSnapshot>> _historyStream() {
+    final base = FirebaseFirestore.instance
+        .collection('users')
+        .doc(_auth.currentUser?.email)
+        .collection('transactions');
+
+    final linked =
+        base.where('recurringPaymentId', isEqualTo: widget.payment.id).snapshots();
+
+    final titlePrefix = 'Auto-payment for ${widget.payment.title}';
+    final byNote = base
+        .where('note', isGreaterThanOrEqualTo: titlePrefix)
+        .where('note', isLessThan: '$titlePrefix\uf8ff');
+
+    // Primary stream stays live; the note-prefix fallback is re-fetched on
+    // every emission (its contents are legacy/slow-changing, so a one-shot
+    // refresh is sufficient).
+    return linked.asyncMap((snap) async {
+      final noteSnap = await byNote.get();
+      final seen = <String>{};
+      final docs = <QueryDocumentSnapshot>[];
+      for (final doc in snap.docs) {
+        if (seen.add(doc.id)) docs.add(doc);
+      }
+      for (final doc in noteSnap.docs) {
+        if (seen.add(doc.id)) docs.add(doc);
+      }
+      return docs;
+    });
+  }
+
   Widget _buildHistoryList(bool isDark, Color textColor) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users')
-          .doc(_auth.currentUser?.email)
-          .collection('transactions')
-          .where('recurringPaymentId', isEqualTo: widget.payment.id)
-          .orderBy('date', descending: true)
-          .snapshots(),
+    return StreamBuilder<List<QueryDocumentSnapshot>>(
+      stream: _historyStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
+            return Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.w),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline_rounded,
+                      color: textColor.withValues(alpha: 0.4),
+                      size: 32.sp,
+                    ),
+                    SizedBox(height: 12.h),
+                    Text(
+                      "Couldn't load payment history.",
+                      style: TextStyle(
+                        color: textColor.withValues(alpha: 0.6),
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 6.h),
+                    Text(
+                      '${snapshot.error}',
+                      style: TextStyle(
+                        color: textColor.withValues(alpha: 0.35),
+                        fontSize: 11.sp,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return Center(
             child: Padding(
               padding: EdgeInsets.all(32.w),
@@ -475,13 +597,26 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
           ).animate().fadeIn(delay: 400.ms);
         }
 
+        // Sort in Dart — avoids a composite index (recurringPaymentId ASC,
+        // date DESC) that Firestore does not auto-create.
+        final docs = snapshot.data!.toList()
+          ..sort((a, b) {
+            final da = ((a.data() as Map<String, dynamic>?)?['date'] as dynamic)
+                ?.toDate();
+            final db = ((b.data() as Map<String, dynamic>?)?['date'] as dynamic)
+                ?.toDate();
+            return (db ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+              da ?? DateTime.fromMillisecondsSinceEpoch(0),
+            );
+          });
+
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: docs.length,
           separatorBuilder: (c, i) => SizedBox(height: 12.h),
           itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
+            final doc = docs[index];
             final tx = TransactionModel.fromMap(
               doc.id,
               doc.data() as Map<String, dynamic>,
@@ -545,7 +680,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                           ),
                         ),
                         Text(
-                          "${CurrencyController.to.currencySymbol.value}${tx.amount.toStringAsFixed(0)}",
+                          "${CurrencyController.to.currencySymbol.value}${tx.amount.abs().toStringAsFixed(0)}",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16.sp,
@@ -697,5 +832,286 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
       ErrorHandler.showSuccess("Subscription removed successfully");
       Navigator.of(context).pop(); // Close screen
     }
+  }
+}
+
+class _LinkTransactionSheet extends StatefulWidget {
+  final RecurringPayment payment;
+  final bool isDark;
+
+  const _LinkTransactionSheet({
+    required this.payment,
+    required this.isDark,
+  });
+
+  @override
+  State<_LinkTransactionSheet> createState() => _LinkTransactionSheetState();
+}
+
+class _LinkTransactionSheetState extends State<_LinkTransactionSheet> {
+  late final TransactionController _txController;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (!Get.isRegistered<TransactionController>()) {
+      Get.put(TransactionController());
+    }
+    _txController = Get.find<TransactionController>();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<TransactionModel> get _candidates {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final txs = _txController.transactions
+        .where((t) => uid != null && t.senderId == uid)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return txs;
+    return txs.where((t) {
+      final haystack =
+          '${t.recipientName} ${t.note ?? ''} ${t.category ?? ''}'.toLowerCase();
+      return haystack.contains(q);
+    }).toList();
+  }
+
+  Future<void> _link(TransactionModel tx) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: widget.isDark ? const Color(0xFF1E1E2C) : Colors.white,
+        title: const Text("Link Transaction?"),
+        content: Text(
+          'Link this transaction to "${widget.payment.title}"? '
+          'The next due date will advance by one cycle from the transaction date.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Link"),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    Navigator.of(context, rootNavigator: true).pop(); // Close the sheet
+
+    try {
+      await RecurringService().linkTransaction(
+        payment: widget.payment,
+        transactionId: tx.id,
+      );
+      if (!mounted) return;
+      ErrorHandler.showSuccess("Transaction linked to ${widget.payment.title}");
+    } catch (e) {
+      if (!mounted) return;
+      ErrorHandler.showError("Failed to link transaction. Please try again.");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDark;
+    final textColor = isDark ? Colors.white : const Color(0xFF1A1A2E);
+    final candidates = _candidates;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24.w,
+        24.h,
+        24.w,
+        MediaQuery.of(context).viewInsets.bottom + 24.h,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Link Transaction",
+                  style: TextStyle(
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: textColor.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            "Select a transaction to link to ${widget.payment.title}",
+            style: TextStyle(
+              fontSize: 13.sp,
+              color: textColor.withValues(alpha: 0.6),
+            ),
+          ),
+          SizedBox(height: 16.h),
+          TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _query = v),
+            style: TextStyle(color: textColor),
+            decoration: InputDecoration(
+              hintText: "Search transactions...",
+              hintStyle: TextStyle(color: textColor.withValues(alpha: 0.4)),
+              prefixIcon: Icon(Icons.search_rounded, color: textColor),
+              isDense: true,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 400.h),
+            child: candidates.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.w),
+                      child: Text(
+                        "No transactions found.",
+                        style: TextStyle(
+                          color: textColor.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: candidates.length,
+                    separatorBuilder: (c, i) => SizedBox(height: 8.h),
+                    itemBuilder: (context, index) {
+                      final tx = candidates[index];
+                      final isLinkedHere =
+                          tx.recurringPaymentId == widget.payment.id;
+                      final linkedElsewhere =
+                          tx.recurringPaymentId != null && !isLinkedHere;
+                      return InkWell(
+                        onTap: () => _link(tx),
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: Container(
+                          padding: EdgeInsets.all(14.w),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12.r),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : Colors.grey.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: EdgeInsets.all(10.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.arrow_upward_rounded,
+                                  color: Colors.redAccent,
+                                  size: 16.sp,
+                                ),
+                              ),
+                              SizedBox(width: 12.w),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      tx.recipientName.isEmpty
+                                          ? (tx.note ?? "Transaction")
+                                          : tx.recipientName,
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: textColor,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2.h),
+                                    Text(
+                                      DateFormat('MMM dd, yyyy').format(tx.date),
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: textColor.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isLinkedHere) ...[
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 6.w,
+                                    vertical: 2.h,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(6.r),
+                                  ),
+                                  child: Text(
+                                    "LINKED",
+                                    style: TextStyle(
+                                      fontSize: 9.sp,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.green,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8.w),
+                              ] else if (linkedElsewhere) ...[
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange,
+                                  size: 16.sp,
+                                ),
+                                SizedBox(width: 8.w),
+                              ],
+                              Text(
+                                "${CurrencyController.to.currencySymbol.value}${tx.amount.abs().toStringAsFixed(0)}",
+                                style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w800,
+                                  color: textColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }

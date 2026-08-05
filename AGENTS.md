@@ -60,7 +60,8 @@ flutter test test/<file>_test.dart  # single file
 flutter run
 flutter build apk --release
 flutter build appbundle --release
-flutter gen-l10n                    # after editing ARB files in lib/l10n/
+flutter build web --release --base-href /WealthSync/   # GitHub Pages deploy
+flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n.yaml + generate: true)
 ```
 
 CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter **3.35.5**, Dart `^3.9.2`. On merge to `master`, CI auto-bumps `pubspec.yaml` to `2.0.<run_number>`, updates `app_version.json` + README download link, creates a signed GitHub release (`v2.0.<run_number>`), and deploys web to GitHub Pages under base-href `/WealthSync/`. Version-commit/README-commit loops are avoided by skipping the commit when the message starts with `CI:`.
@@ -89,7 +90,7 @@ ThemeController is inline in `main.dart` (registered before any screen).
 
 ## Controller Registration (2-Phase)
 
-**Phase 1 — `mainCommon()`**: PrivacyController, CurrencyController, AuthController, SubscriptionController, PaymentConfigService, IapService, BiometricService.
+**Phase 1 — `mainCommon()`** (in this order, `main.dart`): ThemeController → PrivacyController → CurrencyController → AuthController → SubscriptionController → PaymentConfigService → IapService → BiometricService.
 
 **Phase 2 — `_handleAuthChange()` after login**: TransactionController → ProfileController → AnalyticsController → BudgetController → GoalsController → LoanController → ChallengesController → LentMoneyController → RecurringPaymentController.
 
@@ -110,7 +111,7 @@ One Firestore subcollection per asset type under `users/{userEmail}/`, plus `wea
 
 **WealthPortfolio** (`lib/Models/wealth_data.dart`): 24 asset fields + `custom` map, `targets`, `hiddenKeys`. `totalAssets` sums all 24 + custom entries. `totalLiabilities = loans + creditCard + bnpl`.
 
-**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:58` (primary subscription in `initState`). Note: `_loadData()` (line 74) also calls `getPortfolio()` (line 89) for geo-enrichment, but the primary real-time data comes from the stream.
+**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:60` (primary subscription in `initState`). Note: `_loadData()` (line 76) also calls `getPortfolio()` (line 91) for geo-enrichment, but the primary real-time data comes from the stream.
 
 **Generic screen**: `AssetDetailScreen(config:)` for all 24 types. Custom screens: `RealEstateDetailScreen`, `VehicleDetailScreen`, `InsurancePolicyScreen`, `CreditCardDetailScreen`.
 
@@ -139,7 +140,7 @@ Priority: refund/cashback→credit, debited/deducted/withdrawn/spent/sent→debi
 3. **Salary detection false positives** — filter EMI/loans from candidates BEFORE median/max. Check `recipientName` for exclusion keywords only (not `note`/`category`).
 4. **`fromMap` Timestamp cast** — use `(map['lastUpdated'] as dynamic)?.toDate()` (works with real Timestamp and test mocks).
 5. **Test values drift** — when adding asset fields, update `totalAssets` expected values in both `wealth_data_test.dart` tests and the comment sum.
-6. **`compact()` formats** — `wealth_math.dart`: ≥1M → `"x.xCr"`, ≥100K → `"x.xL"`, ≥1K → integer `K` (so `compact(1500)` → `"2K"`, not `"1.5K"`).
+6. **`compact()` formats** — `wealth_math.dart`: ≥10M (1Cr) → `"x.xCr"`, ≥100K (1L) → `"x.xL"`, ≥1K → integer `K`. So `compact(1500)` → `"2K"` and `compact(1_000_000)` → `"10.0L"` (1M is below the 1Cr threshold, not `"1.0M"`).
 7. **Don't mix GetX + Flutter navigator** — `Get.dialog()` + `Navigator.pop()` + `Get.snackbar()` crashes. Use `showDialog()` + `Navigator.of(context, rootNavigator: true).pop()` + `ScaffoldMessenger.showSnackBar()`.
 8. **FilePicker.saveFile() returns content:// on Android** — cannot `File(uri).writeAsString()`. Pass `bytes: Uint8List.fromList(utf8.encode(csv))`.
 9. **`orderBy() as Query` is unnecessary cast** — triggers `unnecessary_cast` warning.
@@ -151,6 +152,7 @@ Priority: refund/cashback→credit, debited/deducted/withdrawn/spent/sent→debi
 15. **Cache O(n) getters** — `totalBalance` iterates all transactions. Use `Rx` + `ever` worker so the loop only runs when data actually changes (`transaction_controller.dart`).
 16. **Cache Theme.of** — 13 calls per build in `analytics.dart` → cache `_cachedTheme` and `_cachedIsDark` in `build()`, restore `get isDark => _cachedIsDark`.
 17. **Unchecked `jsonDecode` casts** — always check `is Map` / `is List` before `as`. Prevents crashes on corrupted cache (`category_service.dart`, `offline_queue.dart`, `sms_import_screen.dart`).
+18. **Firestore JS SDK b815 corruption (web)** — after the AsyncQueue assertion the SDK is unrecoverable without a page reload; `main.dart` detects the error string and auto-reloads once via `reloadPage()` (`web_reload_web.dart`). The whole web auth flow in `main.dart` is shaped around avoiding this bug — do NOT "simplify" it: `enableNetwork()` is deferred until after login, Phase 2 controllers are registered with 500 ms delays on web, `ThemeController.resubscribe()` is re-invoked after `TransactionController` is up (with the `.get()` kept after `.snapshots()` listeners), `PaymentConfigService.startPolling()` only starts after all `.snapshots()` listeners exist, `_checkOnboardingStatus` skips the Firestore `.get()` on web, and `checkSubscriptionStatus()` is skipped on app resume. Any reordering can re-trigger the crash.
 
 ## Platform-Specific
 

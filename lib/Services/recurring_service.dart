@@ -156,17 +156,108 @@ class RecurringService {
         .update(updates);
   }
 
-  // Link an existing transaction to this payment
-  Future<void> linkTransaction(String paymentId, String transactionId) async {
+  // Link an existing transaction to this payment and advance the next due
+  // date by one cycle from the linked transaction's date. Both writes are
+  // batched atomically so the bill reads as paid and shows the history entry.
+  Future<void> linkTransaction({
+    required RecurringPayment payment,
+    required String transactionId,
+  }) async {
+    final user = _auth.currentUser;
     final email = _userEmail;
-    if (email == null) return;
+    if (user == null || email == null) return;
 
-    await _db
+    final txSnap = await _db
         .collection('users')
         .doc(email)
         .collection('transactions')
         .doc(transactionId)
-        .update({'recurringPaymentId': paymentId});
+        .get();
+    if (!txSnap.exists) return;
+
+    final txDate = ((txSnap.data()?['date'] as dynamic)?.toDate()) ??
+        DateTime.now();
+    final nextDate = _advanceDateStatic(payment, txDate);
+
+    final batch = _db.batch();
+
+    batch.update(
+      _db
+          .collection('users')
+          .doc(email)
+          .collection('transactions')
+          .doc(transactionId),
+      {'recurringPaymentId': payment.id},
+    );
+    batch.update(
+      _db
+          .collection('users')
+          .doc(email)
+          .collection('recurring_payments')
+          .doc(payment.id),
+      {'nextDueDate': Timestamp.fromDate(nextDate)},
+    );
+
+    await batch.commit();
+  }
+
+  // Backfill recurringPaymentId onto auto-pay transactions that lost their
+  // link (field missing or mismatched on legacy data). Matched by senderId,
+  // the "Auto-payment for <title>" note and date window — safe because
+  // auto-pay transactions are always created with exactly those fields.
+  // The amount is NOT required to match: a subscription's price legitimately
+  // changes over time, so legacy transactions carry older amounts. It is only
+  // used as a tiebreaker when another active payment shares the same title.
+  // Returns the number of transactions repaired.
+  Future<int> repairUnlinkedTransactions(RecurringPayment payment) async {
+    final user = _auth.currentUser;
+    final email = _userEmail;
+    if (user == null || email == null) return 0;
+
+    final paymentsSnap = await _db
+        .collection('users')
+        .doc(email)
+        .collection('recurring_payments')
+        .get();
+    final sameTitleCount = paymentsSnap.docs
+        .where((p) => p.id != payment.id && p.data()['title'] == payment.title)
+        .length;
+    final ambiguousTitle = sameTitleCount > 0;
+
+    final snapshot = await _db
+        .collection('users')
+        .doc(email)
+        .collection('transactions')
+        .where('senderId', isEqualTo: user.uid)
+        .get();
+
+    final notePrefix = 'auto-payment for ${payment.title.toLowerCase()}';
+    final windowStart = payment.startDate.subtract(const Duration(days: 2));
+    final docs = snapshot.docs.where((d) {
+      final data = d.data();
+      final linked = data['recurringPaymentId'];
+      if (linked != null && linked.toString().isNotEmpty) return false;
+      final note = (data['note'] as String?)?.toLowerCase() ?? '';
+      if (!note.contains(notePrefix)) return false;
+      // Duplicate title? Require an amount match too so transactions are not
+      // attributed to the wrong payment.
+      if (ambiguousTitle) {
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0;
+        if ((amount.abs() - payment.amount).abs() > 0.01) return false;
+      }
+      final date = (data['date'] as dynamic)?.toDate();
+      if (date == null || date.isBefore(windowStart)) return false;
+      return true;
+    }).toList();
+
+    if (docs.isEmpty) return 0;
+
+    final batch = _db.batch();
+    for (final doc in docs) {
+      batch.update(doc.reference, {'recurringPaymentId': payment.id});
+    }
+    await batch.commit();
+    return docs.length;
   }
 
   // Manually link/mark as paid -> Advance due date & optionally create txn
@@ -181,6 +272,25 @@ class RecurringService {
 
     final uid = user.uid;
     DateTime nextDate = _advanceDate(payment);
+
+    // Idempotency: if the auto-pay already created a transaction for this
+    // payment today (and advanced the due date), do nothing — otherwise a
+    // manual "Mark Paid" would record a duplicate payment for the same cycle.
+    if (createTransaction) {
+      final existingSnap = await _db
+          .collection('users')
+          .doc(email)
+          .collection('transactions')
+          .where('recurringPaymentId', isEqualTo: payment.id)
+          .get();
+      final today = DateTime.now();
+      final todayStart = DateTime(today.year, today.month, today.day);
+      final hasTodayTx = existingSnap.docs.any((d) {
+        final date = (d.data()['date'] as dynamic)?.toDate();
+        return date != null && !date.isBefore(todayStart);
+      });
+      if (hasTodayTx) return;
+    }
 
     final batch = _db.batch();
 
@@ -200,7 +310,7 @@ class RecurringService {
           .doc(txId);
       batch.set(txRef, {
         'id': txId,
-        'amount': -payment.amount,
+        'amount': -RecurringPayment.roundAmount(payment.amount),
         'recipientName': payment.title,
         'recipientId': 'External',
         'senderId': uid,
@@ -231,13 +341,16 @@ class RecurringService {
     final db = FirebaseFirestore.instance;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final endOfToday = today.add(const Duration(days: 1));
 
+    // Single-field range query (no composite index required). The upper bound
+    // is the END of today so a nextDueDate carrying a time-of-day still fires
+    // on its due date instead of a day late.
     final snapshot = await db
         .collection('users')
         .doc(userEmail)
         .collection('recurring_payments')
-        .where('isActive', isEqualTo: true)
-        .where('nextDueDate', isLessThanOrEqualTo: Timestamp.fromDate(today))
+        .where('nextDueDate', isLessThan: Timestamp.fromDate(endOfToday))
         .get();
 
     final pending = <RecurringPayment>[];
@@ -245,22 +358,26 @@ class RecurringService {
     for (var doc in snapshot.docs) {
       final payment = RecurringPayment.fromMap(doc.id, doc.data());
 
+      if (!payment.isActive) continue;
       if (!payment.autoPay) {
         pending.add(payment);
         continue;
       }
 
       // Idempotency: skip if a transaction for this payment was already
-      // created for the current billing cycle.
+      // created today. Equality-only query (no composite index required);
+      // the date filter is applied in memory.
       final existingSnap = await db
           .collection('users')
           .doc(userEmail)
           .collection('transactions')
           .where('recurringPaymentId', isEqualTo: payment.id)
-          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(today))
-          .limit(1)
           .get();
-      if (existingSnap.docs.isNotEmpty) continue;
+      final hasTodayTx = existingSnap.docs.any((d) {
+        final date = (d.data()['date'] as dynamic)?.toDate();
+        return date != null && !date.isBefore(today);
+      });
+      if (hasTodayTx) continue;
 
       final nextDate = _advanceDateStatic(payment, today);
       final cycleKey = '${today.year}-${today.month}';
@@ -276,7 +393,7 @@ class RecurringService {
           .doc(txId);
       batch.set(txRef, {
         'id': txId,
-        'amount': -payment.amount,
+        'amount': -RecurringPayment.roundAmount(payment.amount),
         'recipientName': payment.title,
         'recipientId': 'External',
         'senderId': uid,
