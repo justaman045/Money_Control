@@ -55,7 +55,10 @@ class RecurringPayment {
       startDate: ((map['startDate'] as dynamic)?.toDate()) ?? DateTime.now(),
       nextDueDate: ((map['nextDueDate'] as dynamic)?.toDate()) ?? DateTime.now(),
       isActive: map['isActive'] ?? true,
-      autoPay: map['autoPay'] ?? true,
+      // Opt-in: only explicit `autoPay: true` enables auto-deduction. Docs
+      // missing the field (legacy subscriptions created before the auto-pay
+      // feature) must NOT silently auto-pay.
+      autoPay: map['autoPay'] ?? false,
     );
   }
 

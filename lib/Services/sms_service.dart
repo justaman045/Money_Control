@@ -64,7 +64,7 @@ class SmsService {
   /// Suggest a category for a merchant name (used by CSV import).
   /// Loads caches if needed, then runs through keyword rules → correction cache → history cache.
   static Future<String> suggestCategory(String merchant) async {
-    await loadCorrectionCache(force: true);
+    await loadCorrectionCache();
     if (!_historyLoaded) await buildHistoryCache();
     return _getCategoryStatic(merchant, '', _currentRules);
   }
@@ -379,10 +379,17 @@ class SmsService {
     );
     var match = amountRegex.firstMatch(body);
 
-    // Fallback: match bare amount if no currency prefix found
+    // Fallback: match bare amount if no currency prefix found. Skip candidates
+    // that look like OTPs/ref numbers (8+ digit runs) or card numbers (4-digit),
+    // and keep scanning so a trailing real amount is still found.
     if (match == null) {
       final bareAmountRegex = RegExp(r'(?:^|[^\d])(\d{2,}(?:\.\d{1,2})?)(?:\b|$)');
-      match = bareAmountRegex.firstMatch(body);
+      for (final m in bareAmountRegex.allMatches(body)) {
+        final digits = (m.group(1) ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+        if (digits.length >= 8 || digits.length == 4) continue;
+        match = m;
+        break;
+      }
     }
 
     if (match == null) return null;

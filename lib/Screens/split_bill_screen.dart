@@ -392,15 +392,18 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
     );
   }
 
-  Widget _sectionLabel(String text) => Text(
-    text,
-    style: TextStyle(
-      fontSize: 13.sp,
-      fontWeight: FontWeight.w600,
-      color: Colors.white54,
-      letterSpacing: 0.8,
-    ),
-  );
+  Widget _sectionLabel(String text) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 13.sp,
+        fontWeight: FontWeight.w600,
+        color: isDark ? Colors.white54 : AppColors.lightTextSecondary,
+        letterSpacing: 0.8,
+      ),
+    );
+  }
 
   Widget _buildTextField({
     required TextEditingController controller,
@@ -426,7 +429,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
         filled: true,
         fillColor: isDark
             ? Colors.white.withValues(alpha: 0.06)
-            : Colors.black.withValues(alpha: 0.04),
+            : AppColors.lightSurfaceCard,
         contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.r),

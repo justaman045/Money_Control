@@ -17,7 +17,7 @@ import 'package:money_control/Utils/web_reload_stub.dart'
     if (dart.library.html) 'package:money_control/Utils/web_reload_web.dart';
 
 import 'package:money_control/firebase_options.dart';
-import 'package:money_control/Screens/homescreen.dart';
+import 'package:money_control/Screens/main_shell.dart';
 import 'package:money_control/Screens/splashscreen.dart';
 import 'package:money_control/Screens/onboarding_screen.dart';
 import 'package:money_control/Components/colors.dart';
@@ -26,6 +26,8 @@ import 'package:money_control/Services/local_backup_service.dart';
 import 'package:money_control/Services/update_checker.dart';
 import 'package:money_control/Services/biometric_service.dart';
 import 'package:money_control/Services/notification_service.dart';
+import 'package:money_control/Services/performance_controller.dart';
+import 'package:money_control/Services/connectivity_controller.dart';
 import 'package:money_control/Controllers/privacy_controller.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/tutorial_controller.dart';
@@ -48,6 +50,7 @@ import 'package:money_control/Platform/widget_platform.dart';
 import 'package:money_control/Screens/add_transaction.dart';
 import 'package:money_control/Services/cache_service.dart';
 import 'package:money_control/Services/sms_service.dart';
+import 'package:money_control/Services/recurring_service.dart';
 
 // ---- THEME CONTROLLER ----
 class ThemeController extends GetxController {
@@ -56,7 +59,6 @@ class ThemeController extends GetxController {
 
   ThemeMode get themeMode => currentTheme.value;
   StreamSubscription<DocumentSnapshot>? _themeSubscription;
-
 
   @override
   void onClose() {
@@ -99,12 +101,9 @@ class ThemeController extends GetxController {
             .collection("users")
             .doc(user.email)
             .snapshots()
-            .listen(
-              (snapshot) {
-                _applyThemeSnapshot(snapshot);
-              },
-              onError: (e) => debugPrint('ThemeController stream error: $e'),
-            );
+            .listen((snapshot) {
+              _applyThemeSnapshot(snapshot);
+            }, onError: (e) => debugPrint('ThemeController stream error: $e'));
       }
     }
   }
@@ -112,7 +111,9 @@ class ThemeController extends GetxController {
   void _applyThemeSnapshot(DocumentSnapshot snapshot) {
     if (snapshot.exists) {
       final data = snapshot.data();
-      if (data != null && data is Map<String, dynamic> && data.containsKey("darkMode")) {
+      if (data != null &&
+          data is Map<String, dynamic> &&
+          data.containsKey("darkMode")) {
         final isDark = data["darkMode"] == true;
         final newMode = isDark ? ThemeMode.dark : ThemeMode.light;
         if (currentTheme.value != newMode) {
@@ -171,7 +172,9 @@ Future<void> mainCommon({bool isTest = false}) async {
       // No recovery possible without page reload. Detect and auto-reload once.
       if (kIsWeb && errorStr.contains('b815') && !_b815ReloadScheduled) {
         _b815ReloadScheduled = true;
-        debugPrint('⚠️ Firestore SDK corrupted (b815). Reloading page in 2s...');
+        debugPrint(
+          '⚠️ Firestore SDK corrupted (b815). Reloading page in 2s...',
+        );
         Future.delayed(const Duration(seconds: 2), () {
           reloadPage();
         });
@@ -193,16 +196,46 @@ Future<void> mainCommon({bool isTest = false}) async {
     );
   }
 
-  // Initialize Controllers
+  // Initialize Controllers (synchronous registrations only — the first frame
+  // depends on these being resolvable).
   Get.put(PrivacyController());
   Get.put(CurrencyController());
   Get.put(AuthController());
   Get.put(SubscriptionController());
   Get.put(PaymentConfigService());
-  await WidgetService.init();
-  await Get.put(IapService()).init();
+  Get.put(PerformanceController());
+  Get.put(ConnectivityController());
+  Get.put(IapService());
   final bioService = Get.put(BiometricService());
 
+  // Heavy async startup (IAP product query over the network, home-widget
+  // registration, WorkManager, notification permission) is deferred until
+  // after the first frame so the splash paints immediately on low-end devices
+  // and slow networks. Order inside the callback mirrors the original.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _deferredStartup(isTest);
+  });
+
+  // Check biometrics on launch
+  await bioService.checkBiometricOnLaunch();
+
+  // Init Notifications with callback
+  await NotificationService.init(
+    onDidReceiveNotificationResponse: (response) {
+      if (response.payload == "home") {
+        Get.to(() => const MainShell());
+      }
+    },
+  );
+
+  runApp(RootApp(isTest: isTest));
+}
+
+/// Runs after the first frame so expensive one-time platform init does not
+/// delay the initial render.
+Future<void> _deferredStartup(bool isTest) async {
+  await WidgetService.init();
+  await Get.find<IapService>().init();
   await BackgroundWorker.init();
 
   if (!isTest && !kIsWeb) {
@@ -213,30 +246,18 @@ Future<void> mainCommon({bool isTest = false}) async {
         ?.requestNotificationsPermission();
   }
 
-  // On web, defer enableNetwork() to after login to avoid triggering the
-  // Firestore JS SDK WatchChangeAggregator ca9/b815 assertion bug during
-  // SDK initialization. Native platforms keep the existing behavior.
+  // On web, enableNetwork() stays deferred to after login (see b815 note in
+  // _handleAuthChange). Native platforms keep the existing behavior.
   if (!kIsWeb) {
-    FirebaseFirestore.instance.enableNetwork().then((_) {
-      syncPendingTransactions();
-    }).catchError((e) {
-      debugPrint('enableNetwork error: $e');
-    });
+    FirebaseFirestore.instance
+        .enableNetwork()
+        .then((_) {
+          syncPendingTransactions();
+        })
+        .catchError((e) {
+          debugPrint('enableNetwork error: $e');
+        });
   }
-
-  // Check biometrics on launch
-  await bioService.checkBiometricOnLaunch();
-
-  // Init Notifications with callback
-  await NotificationService.init(
-    onDidReceiveNotificationResponse: (response) {
-      if (response.payload == "home") {
-        Get.to(() => const BankingHomeScreen());
-      }
-    },
-  );
-
-  runApp(RootApp(isTest: isTest));
 }
 
 // Load theme BEFORE app builds
@@ -265,15 +286,17 @@ class _RootAppState extends State<RootApp> with WidgetsBindingObserver {
   void _initWidgetClickHandling() {
     if (kIsWeb) return;
     // Cold start: app opened via widget tap
-    HomeWidget.initiallyLaunchedFromHomeWidget().then((uri) {
-      if (uri?.host == 'add_transaction') {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Get.to(() => const PaymentScreen(type: PaymentType.send));
+    HomeWidget.initiallyLaunchedFromHomeWidget()
+        .then((uri) {
+          if (uri?.host == 'add_transaction') {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Get.to(() => const PaymentScreen(type: PaymentType.send));
+            });
+          }
+        })
+        .catchError((e) {
+          debugPrint('HomeWidget error: $e');
         });
-      }
-    }).catchError((e) {
-      debugPrint('HomeWidget error: $e');
-    });
     // Warm start: app already running when widget tapped
     _widgetClickSub = HomeWidget.widgetClicked.listen((uri) {
       if (uri?.host == 'add_transaction') {
@@ -375,6 +398,18 @@ class _AuthCheckerState extends State<AuthChecker> {
   bool _didInitialBackup = false;
   StreamSubscription<User?>? _authSub;
 
+  /// UID of the session already handled by [_handleAuthChange]. Used to dedupe
+  /// the synchronous current-user call from the stream's first emission
+  /// (replaces the old `.skip(1)`).
+  ///
+  /// `.skip(1)` was racy on native: when a persisted session restores AFTER
+  /// initState reads `currentUser == null`, the restored user becomes the first
+  /// stream emission and gets dropped — Phase-2 controllers then never
+  /// register, while home still renders via the StreamBuilder below (a silent
+  /// failure). Dedupe-by-uid keeps the web flow's single-run guarantee without
+  /// dropping a legitimate first emission.
+  String? _handledUid;
+
   @override
   void initState() {
     super.initState();
@@ -382,118 +417,150 @@ class _AuthCheckerState extends State<AuthChecker> {
       unawaited(UpdateChecker.checkForUpdate());
     }
     _handleAuthChange(FirebaseAuth.instance.currentUser);
-    _authSub = FirebaseAuth.instance.authStateChanges().skip(1).listen(_handleAuthChange);
+    _authSub = FirebaseAuth.instance
+        .authStateChanges()
+        .listen(_handleAuthChange);
   }
 
   void _handleAuthChange(User? user) async {
+    // Skip re-processing the same session (initState call vs first stream
+    // emission), but never drop a null→user transition — a null first
+    // emission is also a no-op, so deduping it is harmless.
+    final uid = user?.uid;
+    if (uid == _handledUid) return;
+    _handledUid = uid;
+    // Anchor to the user this invocation was triggered for. The web branch
+    // awaits several 500 ms delays; if the user signs out or switches accounts
+    // mid-flight, a stale invocation must not register controllers afterwards.
+    final anchorUid = user?.uid;
+    bool authStale() {
+      final current = FirebaseAuth.instance.currentUser;
+      return current?.uid != anchorUid;
+    }
+
     try {
-    final isOAuthUser = user?.providerData.any(
-          (p) => p.providerId == 'google.com' || p.providerId == 'apple.com',
-        ) ??
-        false;
-    if (user != null && (user.emailVerified || isOAuthUser)) {
-      // On web, initialize Firestore network here (after auth, before Phase 2)
-      // so the first JS SDK operation is a persistent .snapshots() listener
-      // from TransactionController, not a transient .get() — this avoids the
-      // WatchChangeAggregator ca9/b815 assertion bug in Firebase JS SDK.
-      if (kIsWeb) {
-        try {
-          await FirebaseFirestore.instance.enableNetwork();
-        } catch (e) {
-          debugPrint('enableNetwork error: $e');
+      final isOAuthUser =
+          user?.providerData.any(
+            (p) => p.providerId == 'google.com' || p.providerId == 'apple.com',
+          ) ??
+          false;
+      if (user != null && (user.emailVerified || isOAuthUser)) {
+        // On web, initialize Firestore network here (after auth, before Phase 2)
+        // so the first JS SDK operation is a persistent .snapshots() listener
+        // from TransactionController, not a transient .get() — this avoids the
+        // WatchChangeAggregator ca9/b815 assertion bug in Firebase JS SDK.
+        if (kIsWeb) {
+          try {
+            await FirebaseFirestore.instance.enableNetwork();
+          } catch (e) {
+            debugPrint('enableNetwork error: $e');
+          }
+          if (authStale()) return;
+        }
+        if (!Get.isRegistered<TransactionController>()) {
+          Get.put(TransactionController(), permanent: true);
+        }
+        // On web, resubscribe theme AFTER TransactionController so that
+        // _fetchThemeOnce()'s transient .get() runs AFTER persistent .snapshots()
+        // listeners are established — avoids the ca9/b815 watch aggregator bug.
+        if (!kIsWeb) {
+          Get.find<ThemeController>().resubscribe();
+        } else {
+          if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+          if (authStale()) return;
+          Get.find<ThemeController>().resubscribe();
+          syncPendingTransactions();
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<ProfileController>()) {
+          Get.put(ProfileController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<AnalyticsController>()) {
+          Get.put(AnalyticsController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<BudgetController>()) {
+          Get.put(BudgetController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<GoalsController>()) {
+          Get.put(GoalsController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<LoanController>()) {
+          Get.put(LoanController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<ChallengesController>()) {
+          Get.put(ChallengesController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<LentMoneyController>()) {
+          Get.put(LentMoneyController(), permanent: true);
+        }
+        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
+        if (authStale()) return;
+        if (!Get.isRegistered<RecurringPaymentController>()) {
+          Get.put(RecurringPaymentController(), permanent: true);
+        }
+        // Start PaymentConfigService polling AFTER all persistent .snapshots()
+        // listeners are established. A transient .get() before persistent targets
+        // can trigger the Firestore JS SDK WatchChangeAggregator ca9/b815 bug.
+        if (kIsWeb && Get.isRegistered<PaymentConfigService>()) {
+          PaymentConfigService.to.startPolling();
+        }
+        final email = user.email;
+        if (!_didInitialBackup && email != null) {
+          _didInitialBackup = true;
+          unawaited(LocalBackupService.backupUserTransactions(email));
+        }
+      } else {
+        // Bail if a new user signed in while a stale logout/verification
+        // invocation was in flight — never tear down the fresh session.
+        if (authStale()) return;
+        if (Get.isRegistered<TransactionController>()) {
+          Get.delete<TransactionController>(force: true);
+        }
+        if (Get.isRegistered<ProfileController>()) {
+          Get.delete<ProfileController>(force: true);
+        }
+        if (Get.isRegistered<AnalyticsController>()) {
+          Get.delete<AnalyticsController>(force: true);
+        }
+        if (Get.isRegistered<BudgetController>()) {
+          Get.delete<BudgetController>(force: true);
+        }
+        if (Get.isRegistered<GoalsController>()) {
+          Get.delete<GoalsController>(force: true);
+        }
+        if (Get.isRegistered<LoanController>()) {
+          Get.delete<LoanController>(force: true);
+        }
+        if (Get.isRegistered<ChallengesController>()) {
+          Get.delete<ChallengesController>(force: true);
+        }
+        if (Get.isRegistered<LentMoneyController>()) {
+          Get.delete<LentMoneyController>(force: true);
+        }
+        if (Get.isRegistered<RecurringPaymentController>()) {
+          Get.delete<RecurringPaymentController>(force: true);
+        }
+        SmsService.resetCache();
+        RecurringService.resetCache();
+        LocalCacheService.clearAll();
+        _didInitialBackup = false;
+        if (user != null && !user.emailVerified && !isOAuthUser) {
+          FirebaseAuth.instance.signOut();
         }
       }
-      if (!Get.isRegistered<TransactionController>()) {
-        Get.put(TransactionController());
-      }
-      // On web, resubscribe theme AFTER TransactionController so that
-      // _fetchThemeOnce()'s transient .get() runs AFTER persistent .snapshots()
-      // listeners are established — avoids the ca9/b815 watch aggregator bug.
-      if (!kIsWeb) {
-        Get.find<ThemeController>().resubscribe();
-      } else {
-        if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-        Get.find<ThemeController>().resubscribe();
-        syncPendingTransactions();
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<ProfileController>()) {
-        Get.put(ProfileController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<AnalyticsController>()) {
-        Get.put(AnalyticsController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<BudgetController>()) {
-        Get.put(BudgetController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<GoalsController>()) {
-        Get.put(GoalsController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<LoanController>()) {
-        Get.put(LoanController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<ChallengesController>()) {
-        Get.put(ChallengesController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<LentMoneyController>()) {
-        Get.put(LentMoneyController());
-      }
-      if (kIsWeb) await Future.delayed(const Duration(milliseconds: 500));
-      if (!Get.isRegistered<RecurringPaymentController>()) {
-        Get.put(RecurringPaymentController());
-      }
-      // Start PaymentConfigService polling AFTER all persistent .snapshots()
-      // listeners are established. A transient .get() before persistent targets
-      // can trigger the Firestore JS SDK WatchChangeAggregator ca9/b815 bug.
-      if (kIsWeb && Get.isRegistered<PaymentConfigService>()) {
-        PaymentConfigService.to.startPolling();
-      }
-      final email = user.email;
-      if (!_didInitialBackup && email != null) {
-        _didInitialBackup = true;
-        unawaited(LocalBackupService.backupUserTransactions(email));
-      }
-    } else {
-      if (Get.isRegistered<TransactionController>()) {
-        Get.delete<TransactionController>(force: true);
-      }
-      if (Get.isRegistered<ProfileController>()) {
-        Get.delete<ProfileController>(force: true);
-      }
-      if (Get.isRegistered<AnalyticsController>()) {
-        Get.delete<AnalyticsController>(force: true);
-      }
-      if (Get.isRegistered<BudgetController>()) {
-        Get.delete<BudgetController>(force: true);
-      }
-      if (Get.isRegistered<GoalsController>()) {
-        Get.delete<GoalsController>(force: true);
-      }
-      if (Get.isRegistered<LoanController>()) {
-        Get.delete<LoanController>(force: true);
-      }
-      if (Get.isRegistered<ChallengesController>()) {
-        Get.delete<ChallengesController>(force: true);
-      }
-      if (Get.isRegistered<LentMoneyController>()) {
-        Get.delete<LentMoneyController>(force: true);
-      }
-      if (Get.isRegistered<RecurringPaymentController>()) {
-        Get.delete<RecurringPaymentController>(force: true);
-      }
-      SmsService.resetCache();
-      LocalCacheService.clearAll();
-      _didInitialBackup = false;
-      if (user != null && !user.emailVerified && !isOAuthUser) {
-        FirebaseAuth.instance.signOut();
-      }
-    }
     } catch (e) {
       debugPrint('Auth change handler error: $e');
     }
@@ -539,13 +606,17 @@ class _AuthCheckerState extends State<AuthChecker> {
         }
 
         final user = snapshot.data;
-        final isOAuth = user?.providerData.any(
-              (p) => p.providerId == 'google.com' || p.providerId == 'apple.com',
+        final isOAuth =
+            user?.providerData.any(
+              (p) =>
+                  p.providerId == 'google.com' || p.providerId == 'apple.com',
             ) ??
             false;
 
         final onboardingEmail = user?.email;
-        if (user != null && onboardingEmail != null && (user.emailVerified || isOAuth)) {
+        if (user != null &&
+            onboardingEmail != null &&
+            (user.emailVerified || isOAuth)) {
           return FutureBuilder<bool>(
             future: _checkOnboardingStatus(onboardingEmail),
             builder: (context, snapshot) {
@@ -557,7 +628,7 @@ class _AuthCheckerState extends State<AuthChecker> {
               final isOnboarded = snapshot.data ?? false;
 
               if (isOnboarded) {
-                return const BankingHomeScreen();
+                return const MainShell();
               } else {
                 return const OnboardingScreen();
               }

@@ -21,8 +21,8 @@ class AppColors {
   ];
 
   static const List<Color> lightGradient = [
-    Color(0xFFF2F4F7), // Warm off-white
-    Color(0xFFD5DAE0), // Silver gray (visible depth)
+    Color(0xFFE7E9F7), // Soft lavender-periwinkle
+    Color(0xFFC9CFEB), // Cool periwinkle (visible depth)
   ];
 
   // ------------------ ALERTS ------------------
@@ -41,15 +41,16 @@ class AppColors {
   static const Color darkDivider = Color(0xFF2A2A3E);
 
   // ------------------ NEUTRALS (Light Mode) ------------------
-  static const Color lightBackground = Color(0xFFF2F4F7);
+  static const Color lightBackground = Color(0xFFECEEF8);
   static const Color lightSurface = Colors.white;
-  static const Color lightSurfaceCard = Color(0xFFF8F9FB);
-  static const Color lightTextPrimary = Color(0xFF111827);
-  static const Color lightTextSecondary = Color(0xFF4B5563);
-  static const Color lightTextTertiary = Color(0xFF9CA3AF);
-  static const Color lightBorder = Color(0xFFD1D5DB);
-  static const Color lightDivider = Color(0xFFE5E7EB);
-  static const Color lightGlassBg = Color(0xFFF8F9FB);
+  static const Color lightSurfaceCard = Color(0xFFF4F5FC);
+  static const Color lightActionSurface = Color(0xFFECEEF9);
+  static const Color lightTextPrimary = Color(0xFF1E2030);
+  static const Color lightTextSecondary = Color(0xFF4A4E6B);
+  static const Color lightTextTertiary = Color(0xFF8F94B3);
+  static const Color lightBorder = Color(0xFFC9CEE4);
+  static const Color lightDivider = Color(0xFFE1E4F2);
+  static const Color lightGlassBg = Color(0xFFF4F5FC);
 }
 
 //
@@ -76,7 +77,7 @@ ThemeData buildLightTheme() {
       color: AppColors.lightSurface,
       surfaceTintColor: Colors.transparent,
       elevation: 1,
-      shadowColor: Color(0x1A000000),
+      shadowColor: Color(0x22000000),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
       ),
@@ -104,7 +105,7 @@ ThemeData buildLightTheme() {
 
     navigationBarTheme: const NavigationBarThemeData(
       backgroundColor: AppColors.lightSurface,
-      indicatorColor: Color(0x1A6C63FF),
+      indicatorColor: Color(0x226C63FF),
       iconTheme: WidgetStatePropertyAll(IconThemeData(color: AppColors.lightTextTertiary)),
       labelTextStyle: WidgetStatePropertyAll(
         TextStyle(color: AppColors.lightTextTertiary, fontSize: 12),
@@ -137,7 +138,7 @@ ThemeData buildLightTheme() {
     // INPUTS
     inputDecorationTheme: const InputDecorationTheme(
       filled: true,
-      fillColor: Color(0xFFECEEF2),
+      fillColor: Color(0xFFEAECF8),
       hintStyle: TextStyle(color: AppColors.lightTextTertiary),
       labelStyle: TextStyle(color: AppColors.lightTextSecondary),
       border: OutlineInputBorder(

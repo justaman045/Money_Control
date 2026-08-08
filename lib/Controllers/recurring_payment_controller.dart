@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:money_control/Models/recurring_payment_model.dart';
 import 'package:money_control/Services/cache_service.dart';
 import 'package:money_control/Services/recurring_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RecurringPaymentController extends GetxController {
   static RecurringPaymentController get to => Get.find();
@@ -41,12 +42,18 @@ class RecurringPaymentController extends GetxController {
     final cached = LocalCacheService.get(_cacheKey);
     if (cached is List) {
       final list = cached.map((e) {
-        final map = LocalCacheService.hiveRestore(Map<String, dynamic>.from(e as Map));
+        final map = LocalCacheService.hiveRestore(
+          Map<String, dynamic>.from(e as Map),
+        );
         final id = map.remove('_id') as String? ?? '';
         return RecurringPayment.fromMap(id, map);
       }).toList();
       pendingSubscriptions.value = _computeMonthlyTotal(list);
     }
+    // Never trust the cache past a read: the live stream/one-shot fetch that
+    // follows is authoritative, and stale snapshots must not linger (see the
+    // `.limit()` staleness gotcha).
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> _fetchFromFirestore() async {
@@ -56,10 +63,19 @@ class RecurringPaymentController extends GetxController {
       // than the 15-min background worker. Pending (non-auto-pay) payments are
       // returned but intentionally ignored here — the reminder is sent only
       // from the background worker to avoid notifying while the user is in-app.
+      // Runs at most once per day (shared with the background worker's guard).
       final email = _auth.currentUser?.email;
       final uid = _auth.currentUser?.uid;
       if (email != null && uid != null) {
-        await RecurringService.processDuePayments(email, uid);
+        final prefs = await SharedPreferences.getInstance();
+        final now = DateTime.now();
+        final todayStr =
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        final lastRun = prefs.getString('last_recurring_run_$email');
+        if (lastRun != todayStr) {
+          await RecurringService.processDuePayments(email, uid);
+          await prefs.setString('last_recurring_run_$email', todayStr);
+        }
       }
 
       final list = await _service.getPaymentsOnce();
@@ -69,7 +85,11 @@ class RecurringPaymentController extends GetxController {
           map['_id'] = t.id;
           return LocalCacheService.hiveSafe(map);
         }).toList();
-        LocalCacheService.put(_cacheKey, cacheData, ttl: LocalCacheService.slow5m);
+        LocalCacheService.put(
+          _cacheKey,
+          cacheData,
+          ttl: LocalCacheService.slow5m,
+        );
       }
     } catch (e) {
       log('RecurringPaymentController._fetchFromFirestore error: $e');

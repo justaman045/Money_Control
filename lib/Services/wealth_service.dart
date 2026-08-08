@@ -104,11 +104,41 @@ class WealthService {
     }
   }
 
-  /// Update a specific asset's target value manually
-  static Future<void> updateAssetTarget(String key, double targetValue) async {
+  /// Persist the authoritative bank balance into the portfolio doc so the
+  /// home widget and background workers can read it without scanning the
+  /// whole transactions subcollection.
+  static Future<void> updateBalance(double balance) async {
     try {
       await _portfolioRef.set({
-        'targets': {key: targetValue},
+        'balance': balance,
+        'lastUpdated': Timestamp.now(),
+      }, SetOptions(merge: true));
+      LocalCacheService.invalidate(_cacheKey);
+    } catch (e) {
+      log("Error updating balance: $e");
+    }
+  }
+
+  /// Update a specific asset's target value manually.
+  /// Firestore's merge only merges top-level maps, so we read the existing
+  /// `targets` map first and merge the key into it — otherwise a single
+  /// update would wipe every other asset target.
+  static Future<void> updateAssetTarget(String key, double targetValue) async {
+    try {
+      final currentTargets = <String, dynamic>{};
+      try {
+        final existing = await _portfolioRef.get();
+        final data = existing.data() as Map<String, dynamic>?;
+        final existingTargets = data?['targets'];
+        if (existingTargets is Map) {
+          currentTargets.addAll(Map<String, dynamic>.from(existingTargets));
+        }
+      } catch (e) {
+        log("Error reading targets for merge: $e");
+      }
+      currentTargets[key] = targetValue;
+      await _portfolioRef.set({
+        'targets': currentTargets,
         'lastUpdated': Timestamp.now(),
       }, SetOptions(merge: true));
       LocalCacheService.invalidate(_cacheKey);

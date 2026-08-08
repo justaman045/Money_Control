@@ -44,15 +44,16 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   TransactionModel? _selectedTx;
   Worker? _txWorker;
   Worker? _loadingWorker;
+  late final TransactionController _controller;
 
   @override
   void initState() {
     super.initState();
     selectedTab = widget.initialTab;
     if (!Get.isRegistered<TransactionController>()) Get.put(TransactionController());
-    final controller = Get.find<TransactionController>();
-    _txWorker = ever(controller.transactions, (_) => _regroup());
-    _loadingWorker = ever(controller.isLoading, (_) {
+    _controller = Get.find<TransactionController>();
+    _txWorker = ever(_controller.transactions, (_) => _regroup());
+    _loadingWorker = ever(_controller.isLoading, (_) {
       if (mounted) setState(() {});
     });
     _regroup();
@@ -189,7 +190,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         ),
         body: Builder(
           builder: (context) {
-            final TransactionController controller = Get.find();
+            final controller = _controller;
 
             if (controller.isLoading.value && controller.transactions.isEmpty) {
             return Padding(

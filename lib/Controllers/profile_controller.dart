@@ -4,13 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Models/user_model.dart';
 import 'package:money_control/Services/cache_service.dart';
+import 'package:money_control/Services/error_handler.dart';
 import 'package:universal_io/io.dart';
 
 class ProfileController extends GetxController {
@@ -61,6 +59,15 @@ class ProfileController extends GetxController {
       final map = LocalCacheService.hiveRestore(Map<String, dynamic>.from(cached));
       userProfile.value = UserModel.fromMap(map['_id'] as String? ?? '', map);
     }
+    LocalCacheService.invalidate(_cacheKey);
+  }
+
+  /// Re-fetches the user's Firestore document so UI (e.g. home name) reflects
+  /// edits saved by the profile screen without an app restart.
+  Future<void> refreshFromFirestore() async {
+    final email = _userEmail;
+    if (email == null) return;
+    await _fetchFromFirestore(email);
   }
 
   Future<void> _fetchFromFirestore(String email) async {
@@ -140,25 +147,9 @@ class ProfileController extends GetxController {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      Get.snackbar(
-        "Success",
-        "Profile picture updated!",
-        backgroundColor: AppColors.success,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        margin: EdgeInsets.all(20.w),
-        borderRadius: 20.r,
-      );
+      ErrorHandler.showSuccess("Profile picture updated!");
     } catch (e) {
-      Get.snackbar(
-        "Error",
-        "Failed to upload image: $e",
-        backgroundColor: AppColors.error,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        margin: EdgeInsets.all(20.w),
-        borderRadius: 20.r,
-      );
+      ErrorHandler.showError("Failed to upload image: $e");
     } finally {
       isLoading.value = false;
     }

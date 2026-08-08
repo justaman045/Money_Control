@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:money_control/Services/local_backup_service.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class LegalTrustPage extends StatefulWidget {
   const LegalTrustPage({super.key});
@@ -126,13 +126,7 @@ class _LegalTrustPageState extends State<LegalTrustPage> {
         });
       }
 
-      Get.snackbar(
-        "Data Cleared",
-        "All your data (except email) has been deleted.",
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showSuccess("All your data (except email) has been deleted.", title: "Data Cleared");
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -140,13 +134,7 @@ class _LegalTrustPageState extends State<LegalTrustPage> {
           message = "Error deleting data: $e";
         });
       }
-      Get.snackbar(
-        "Error",
-        e.toString(),
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showError(e.toString());
     }
   }
 
@@ -182,20 +170,10 @@ class _LegalTrustPageState extends State<LegalTrustPage> {
 
       if (mounted) setState(() => downloadingData = false);
 
-      Get.snackbar(
-        "Data Ready",
-        "Your data export file has been created.",
-        backgroundColor: Colors.blue,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showSuccess("Your data export file has been created.", title: "Data Ready");
     } catch (e) {
       if (mounted) setState(() => downloadingData = false);
-      Get.snackbar(
-        "Error",
-        e.toString(),
-        backgroundColor: Colors.red,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showError(e.toString());
     }
   }
 

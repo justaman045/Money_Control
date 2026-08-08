@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:money_control/Models/cateogary.dart';
 import 'package:money_control/Repositories/category_rules_repository.dart';
 import 'package:money_control/Services/sms_service.dart';
@@ -17,6 +18,18 @@ class CategoryService {
   // Records a merchant→category correction. After [autoPromoteThreshold]+
   // corrections for the same merchant the rule is promoted automatically.
   // The correction is also synced to Firestore so it applies on every device.
+  /// Decodes the corrections cache, tolerating corrupted or non-map data.
+  static Map<String, dynamic> _safeDecodeMap(String? raw) {
+    if (raw == null) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+    } catch (e) {
+      debugPrint('CategoryService corrections decode error: $e');
+      return {};
+    }
+  }
+
   static Future<void> recordCorrection(
     String merchant,
     String category,
@@ -25,10 +38,7 @@ class CategoryService {
     if (key.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(correctionsKey);
-    final decoded = raw != null ? jsonDecode(raw) : null;
-    final Map<String, dynamic> map = decoded is Map
-        ? Map<String, dynamic>.from(decoded)
-        : {};
+    final map = _safeDecodeMap(raw);
     final existing = map[key] as Map<String, dynamic>?;
     int newCount = 1;
     if (existing != null && existing['category'] == category) {
@@ -85,8 +95,7 @@ class CategoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(correctionsKey);
     if (raw == null) return null;
-    final decoded = jsonDecode(raw);
-    final map = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+    final map = _safeDecodeMap(raw);
     final entry = map[key] as Map<String, dynamic>?;
     if (entry == null) return null;
     return entry['category'] as String?;
@@ -97,8 +106,7 @@ class CategoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(correctionsKey);
     if (raw == null) return [];
-    final decoded = jsonDecode(raw);
-    final map = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+    final map = _safeDecodeMap(raw);
     final result = <Map<String, dynamic>>[];
     map.forEach((merchant, value) {
       if (value is! Map) return;
@@ -122,8 +130,7 @@ class CategoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(correctionsKey);
     if (raw != null) {
-      final decoded = jsonDecode(raw);
-      final map = decoded is Map ? Map<String, dynamic>.from(decoded) : {};
+      final map = _safeDecodeMap(raw);
       map.remove(key);
       await prefs.setString(correctionsKey, jsonEncode(map));
     }

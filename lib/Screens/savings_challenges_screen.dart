@@ -8,6 +8,7 @@ import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Controllers/challenges_controller.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:money_control/Models/challenge_model.dart';
 import 'package:money_control/data/challenge_presets.dart';
 import 'dart:math';
@@ -17,7 +18,8 @@ class SavingsChallengesScreen extends StatefulWidget {
   const SavingsChallengesScreen({super.key});
 
   @override
-  State<SavingsChallengesScreen> createState() => _SavingsChallengesScreenState();
+  State<SavingsChallengesScreen> createState() =>
+      _SavingsChallengesScreenState();
 }
 
 class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
@@ -25,6 +27,7 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
   late TabController _tab;
   late ConfettiController _confetti;
   late final ChallengesController _ctrl;
+  late final TransactionController _txCtrl;
   final Set<String> _completingIds = {};
 
   @override
@@ -32,8 +35,14 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
     super.initState();
     _tab = TabController(length: 2, vsync: this);
     _confetti = ConfettiController(duration: const Duration(seconds: 3));
-    if (!Get.isRegistered<ChallengesController>()) Get.put(ChallengesController());
+    if (!Get.isRegistered<ChallengesController>()) {
+      Get.put(ChallengesController());
+    }
     _ctrl = Get.find<ChallengesController>();
+    if (!Get.isRegistered<TransactionController>()) {
+      Get.put(TransactionController());
+    }
+    _txCtrl = Get.find<TransactionController>();
   }
 
   @override
@@ -67,8 +76,11 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
             controller: _tab,
             indicatorColor: AppColors.primary,
             labelColor: AppColors.primary,
-            unselectedLabelColor: Colors.white60,
-            tabs: const [Tab(text: "Active"), Tab(text: "Library")],
+            unselectedLabelColor: isDark ? Colors.white60 : AppColors.lightTextSecondary,
+            tabs: const [
+              Tab(text: "Active"),
+              Tab(text: "Library"),
+            ],
           ),
         ),
         floatingActionButton: TabBuilder(
@@ -78,7 +90,10 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
                   onPressed: _showCustomChallengeSheet,
                   backgroundColor: AppColors.primary,
                   icon: const Icon(Icons.add, color: Colors.white),
-                  label: const Text("Custom", style: TextStyle(color: Colors.white)),
+                  label: const Text(
+                    "Custom",
+                    style: TextStyle(color: Colors.white),
+                  ),
                 )
               : const SizedBox.shrink(),
         ),
@@ -90,13 +105,20 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
             ),
             Align(
               alignment: Alignment.topCenter,
-              child: ConfettiWidget(
-                confettiController: _confetti,
-                blastDirectionality: BlastDirectionality.explosive,
-                shouldLoop: false,
-                colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange],
-                createParticlePath: _drawStar,
-              ),
+              child: PerformanceController.to.liteMode.value
+                  ? const SizedBox.shrink()
+                  : ConfettiWidget(
+                      confettiController: _confetti,
+                      blastDirectionality: BlastDirectionality.explosive,
+                      shouldLoop: false,
+                      colors: const [
+                        Colors.green,
+                        Colors.blue,
+                        Colors.pink,
+                        Colors.orange,
+                      ],
+                      createParticlePath: _drawStar,
+                    ),
             ),
           ],
         ),
@@ -105,6 +127,7 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
   }
 
   Widget _buildActiveTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Obx(() {
       final ctrl = _ctrl;
       if (ctrl.isLoading.value) {
@@ -116,16 +139,24 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.emoji_events_outlined, size: 64.sp, color: Colors.white24),
+              Icon(
+                Icons.emoji_events_outlined,
+                size: 64.sp,
+                color: isDark ? Colors.white24 : AppColors.lightBorder,
+              ),
               SizedBox(height: 16.h),
               Text(
                 "Start your first challenge 🎯",
-                style: TextStyle(fontSize: 16.sp, color: Colors.white60),
+                style: TextStyle(
+                    fontSize: 16.sp,
+                    color: isDark ? Colors.white60 : AppColors.lightTextSecondary),
               ),
               SizedBox(height: 8.h),
               Text(
                 "Browse the Library tab or tap + Custom",
-                style: TextStyle(fontSize: 13.sp, color: Colors.white38),
+                style: TextStyle(
+                    fontSize: 13.sp,
+                    color: isDark ? Colors.white38 : AppColors.lightTextTertiary),
               ),
             ],
           ),
@@ -142,14 +173,9 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
 
   Widget _buildChallengeCard(SavingsChallengeModel c) {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    if (!Get.isRegistered<TransactionController>()) Get.put(TransactionController());
-    final txCtrl = Get.find<TransactionController>();
+    final txCtrl = _txCtrl;
     final sym = CurrencyController.to.currencySymbol.value;
-    final progress = _ctrl.computeProgress(
-      c,
-      txCtrl.transactions,
-      uid,
-    );
+    final progress = _ctrl.computeProgress(c, txCtrl.transactions, uid);
 
     double percent = 0;
     String progressLabel = '';
@@ -163,7 +189,9 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
       progressLabel = "$sym${spent.toStringAsFixed(0)} spent";
       targetLabel = "Goal: ${sym}0 on ${c.trackedCategory}";
     } else {
-      percent = c.targetAmount > 0 ? (progress / c.targetAmount).clamp(0.0, 1.0) : 0;
+      percent = c.targetAmount > 0
+          ? (progress / c.targetAmount).clamp(0.0, 1.0)
+          : 0;
       progressLabel = "$sym${progress.toStringAsFixed(0)} saved";
       targetLabel = "Target: $sym${c.targetAmount.toStringAsFixed(0)}";
     }
@@ -172,9 +200,11 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
     // only complete after the period ends with zero spending.
     final bool shouldAutoComplete;
     if (c.trackingType == 'no_spend_category') {
-      shouldAutoComplete = c.isExpired && progress == 0 && !_completingIds.contains(c.id);
+      shouldAutoComplete =
+          c.isExpired && progress == 0 && !_completingIds.contains(c.id);
     } else {
-      shouldAutoComplete = percent >= 1.0 && !c.isCompleted && !_completingIds.contains(c.id);
+      shouldAutoComplete =
+          percent >= 1.0 && !c.isCompleted && !_completingIds.contains(c.id);
     }
     if (shouldAutoComplete) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -194,12 +224,16 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.85),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : Colors.white.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(20.r),
         border: Border.all(
           color: isNearComplete
               ? Colors.amber.withValues(alpha: 0.5)
-              : Colors.white.withValues(alpha: 0.08),
+              : isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : AppColors.lightBorder,
         ),
       ),
       child: Column(
@@ -224,17 +258,24 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
                     color: Colors.red.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8.r),
                   ),
-                  child: Text("Expired", style: TextStyle(fontSize: 11.sp, color: Colors.red)),
+                  child: Text(
+                    "Expired",
+                    style: TextStyle(fontSize: 11.sp, color: Colors.red),
+                  ),
                 )
               else
                 Text(
                   "${c.daysLeft}d left",
-                  style: TextStyle(fontSize: 12.sp, color: Colors.white60),
+                  style: TextStyle(
+                      fontSize: 12.sp,
+                      color: isDark ? Colors.white60 : AppColors.lightTextSecondary),
                 ),
               SizedBox(width: 8.w),
               GestureDetector(
                 onTap: () => _ctrl.deleteChallenge(c.id),
-                child: Icon(Icons.close, size: 18.sp, color: Colors.white38),
+                child: Icon(Icons.close,
+                    size: 18.sp,
+                    color: isDark ? Colors.white38 : AppColors.lightTextTertiary),
               ),
             ],
           ),
@@ -244,7 +285,9 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
             child: LinearProgressIndicator(
               value: percent,
               minHeight: 8.h,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              backgroundColor: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : AppColors.lightBorder,
               valueColor: AlwaysStoppedAnimation(
                 c.trackingType == 'no_spend_category'
                     ? (percent > 0 ? Colors.red : Colors.green)
@@ -256,19 +299,31 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(progressLabel, style: TextStyle(fontSize: 12.sp, color: Colors.white70)),
+              Text(
+                progressLabel,
+                style: TextStyle(
+                    fontSize: 12.sp,
+                    color: isDark ? Colors.white70 : AppColors.lightTextSecondary),
+              ),
               Text(
                 "${(percent * 100).toStringAsFixed(0)}%",
                 style: TextStyle(
                   fontSize: 12.sp,
                   fontWeight: FontWeight.w700,
-                  color: percent >= 1.0 ? Colors.greenAccent : AppColors.primary,
+                  color: percent >= 1.0
+                      ? Colors.greenAccent
+                      : AppColors.primary,
                 ),
               ),
             ],
           ),
           SizedBox(height: 4.h),
-          Text(targetLabel, style: TextStyle(fontSize: 11.sp, color: Colors.white38)),
+          Text(
+            targetLabel,
+            style: TextStyle(
+                fontSize: 11.sp,
+                color: isDark ? Colors.white38 : AppColors.lightTextTertiary),
+          ),
         ],
       ),
     );
@@ -303,9 +358,15 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
       child: Container(
         padding: EdgeInsets.all(16.w),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.85),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.white.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : AppColors.lightBorder,
+          ),
         ),
         child: Row(
           children: [
@@ -317,12 +378,21 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
                 children: [
                   Text(
                     preset.name,
-                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700, color: theme.textTheme.bodyLarge?.color),
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: theme.textTheme.bodyLarge?.color,
+                    ),
                   ),
                   SizedBox(height: 4.h),
                   Text(
                     preset.description,
-                    style: TextStyle(fontSize: 12.sp, color: Colors.white60),
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: isDark
+                          ? Colors.white60
+                          : AppColors.lightTextSecondary,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -332,27 +402,47 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
             SizedBox(width: 12.w),
             isInProgress
                 ? Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 8.h,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : AppColors.lightActionSurface,
                       borderRadius: BorderRadius.circular(12.r),
                     ),
                     child: Text(
                       "In Progress",
-                      style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: Colors.white38),
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w700,
+                        color: isDark
+                            ? Colors.white38
+                            : AppColors.lightTextTertiary,
+                      ),
                     ),
                   )
                 : GestureDetector(
                     onTap: () => _startPreset(preset),
                     child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 8.h,
+                      ),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [AppColors.primary, AppColors.secondary]),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary, AppColors.secondary],
+                        ),
                         borderRadius: BorderRadius.circular(12.r),
                       ),
                       child: Text(
                         "Start",
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: Colors.white),
+                        style: TextStyle(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -404,8 +494,14 @@ class _SavingsChallengesScreenState extends State<SavingsChallengesScreen>
     final fullAngle = degToRad(360);
     path.moveTo(size.width, halfWidth);
     for (double step = 0; step < fullAngle; step += degreesPerStep) {
-      path.lineTo(halfWidth + externalRadius * cos(step), halfWidth + externalRadius * sin(step));
-      path.lineTo(halfWidth + internalRadius * cos(step + halfDegreesPerStep), halfWidth + internalRadius * sin(step + halfDegreesPerStep));
+      path.lineTo(
+        halfWidth + externalRadius * cos(step),
+        halfWidth + externalRadius * sin(step),
+      );
+      path.lineTo(
+        halfWidth + internalRadius * cos(step + halfDegreesPerStep),
+        halfWidth + internalRadius * sin(step + halfDegreesPerStep),
+      );
     }
     path.close();
     return path;
@@ -417,7 +513,11 @@ class _DurationState {
   int selectedDays;
   final TextEditingController daysCtrl;
 
-  _DurationState({required this.endDate, required this.selectedDays, required this.daysCtrl});
+  _DurationState({
+    required this.endDate,
+    required this.selectedDays,
+    required this.daysCtrl,
+  });
 }
 
 class _ChallengeSheetContent extends StatelessWidget {
@@ -450,9 +550,13 @@ class _ChallengeSheetContent extends StatelessWidget {
     final currentDays = showDays ? durationState.selectedDays : 0;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         padding: EdgeInsets.all(24.w),
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1E1E2C) : Colors.white,
@@ -461,120 +565,217 @@ class _ChallengeSheetContent extends StatelessWidget {
         child: SingleChildScrollView(
           child: Center(
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
+              constraints: BoxConstraints(
+                maxWidth: Responsive.contentMaxWidth(context),
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold, color: theme.textTheme.bodyLarge?.color)),
-              SizedBox(height: 20.h),
-              if (nameCtrl != null) ...[
-                TextField(
-                  controller: nameCtrl,
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color, fontSize: 15.sp),
-                  decoration: InputDecoration(
-                    hintText: "Challenge Name",
-                    hintStyle: TextStyle(color: Colors.white38, fontSize: 14.sp),
-                    filled: true,
-                    fillColor: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14.r), borderSide: BorderSide.none),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.bold,
+                      color: theme.textTheme.bodyLarge?.color,
+                    ),
                   ),
-                ),
-                SizedBox(height: 14.h),
-              ],
-              if (showTarget) ...[
-                TextField(
-                  controller: targetCtrl,
-                  keyboardType: TextInputType.number,
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color, fontSize: 15.sp),
-                  decoration: InputDecoration(
-                    hintText: "Target Amount (${CurrencyController.to.currencySymbol.value})",
-                    hintStyle: TextStyle(color: Colors.white38, fontSize: 14.sp),
-                    filled: true,
-                    fillColor: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14.r), borderSide: BorderSide.none),
-                  ),
-                ),
-                SizedBox(height: 14.h),
-              ],
-              if (showDays) ...[
-                Text("Duration (days)", style: TextStyle(fontSize: 13.sp, color: isDark ? Colors.white60 : Colors.black54)),
-                SizedBox(height: 8.h),
-                Wrap(
-                  spacing: 8.w,
-                  runSpacing: 8.h,
-                  children: quickOptions.map((d) {
-                    final isSelected = d == currentDays;
-                    return GestureDetector(
-                      onTap: () => onDaysChanged?.call(d),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary.withValues(alpha: 0.2) : (isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100),
-                          borderRadius: BorderRadius.circular(10.r),
-                          border: Border.all(color: isSelected ? AppColors.primary : Colors.transparent),
+                  SizedBox(height: 20.h),
+                  if (nameCtrl != null) ...[
+                    TextField(
+                      controller: nameCtrl,
+                      style: TextStyle(
+                        color: theme.textTheme.bodyLarge?.color,
+                        fontSize: 15.sp,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: "Challenge Name",
+                        hintStyle: TextStyle(
+                          color: isDark
+                              ? Colors.white38
+                              : AppColors.lightTextTertiary,
+                          fontSize: 14.sp,
                         ),
-                        child: Text(
-                          "$d days",
-                          style: TextStyle(fontSize: 13.sp, fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal, color: isSelected ? AppColors.primary : (isDark ? Colors.white70 : Colors.black54)),
+                        filled: true,
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.07)
+                            : Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14.r),
+                          borderSide: BorderSide.none,
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
-                SizedBox(height: 10.h),
-                TextField(
-                  controller: durationState.daysCtrl,
-                  keyboardType: TextInputType.number,
-                  onChanged: (v) {
-                    final days = int.tryParse(v) ?? 0;
-                    if (days > 0) onDaysChanged?.call(days);
-                  },
-                  style: TextStyle(color: theme.textTheme.bodyLarge?.color, fontSize: 15.sp),
-                  decoration: InputDecoration(
-                    hintText: "Or enter custom days",
-                    hintStyle: TextStyle(color: Colors.white38, fontSize: 14.sp),
-                    filled: true,
-                    fillColor: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14.r), borderSide: BorderSide.none),
-                  ),
-                ),
-                SizedBox(height: 14.h),
-              ],
-              GestureDetector(
-                onTap: onEndDatePick,
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(14.r),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_today, size: 18.sp, color: AppColors.primary),
-                      SizedBox(width: 10.w),
-                      Text(
-                        "Ends: ${DateFormat('dd MMM yyyy').format(durationState.endDate)}",
-                        style: TextStyle(fontSize: 14.sp, color: theme.textTheme.bodyLarge?.color),
+                    ),
+                    SizedBox(height: 14.h),
+                  ],
+                  if (showTarget) ...[
+                    TextField(
+                      controller: targetCtrl,
+                      keyboardType: TextInputType.number,
+                      style: TextStyle(
+                        color: theme.textTheme.bodyLarge?.color,
+                        fontSize: 15.sp,
                       ),
-                    ],
+                      decoration: InputDecoration(
+                        hintText:
+                            "Target Amount (${CurrencyController.to.currencySymbol.value})",
+                        hintStyle: TextStyle(
+                          color: isDark
+                              ? Colors.white38
+                              : AppColors.lightTextTertiary,
+                          fontSize: 14.sp,
+                        ),
+                        filled: true,
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.07)
+                            : Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14.r),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 14.h),
+                  ],
+                  if (showDays) ...[
+                    Text(
+                      "Duration (days)",
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: isDark ? Colors.white60 : Colors.black54,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.h,
+                      children: quickOptions.map((d) {
+                        final isSelected = d == currentDays;
+                        return GestureDetector(
+                          onTap: () => onDaysChanged?.call(d),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16.w,
+                              vertical: 8.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary.withValues(alpha: 0.2)
+                                  : (isDark
+                                        ? Colors.white.withValues(alpha: 0.07)
+                                        : Colors.grey.shade100),
+                              borderRadius: BorderRadius.circular(10.r),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : Colors.transparent,
+                              ),
+                            ),
+                            child: Text(
+                              "$d days",
+                              style: TextStyle(
+                                fontSize: 13.sp,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : (isDark
+                                          ? Colors.white70
+                                          : Colors.black54),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    SizedBox(height: 10.h),
+                    TextField(
+                      controller: durationState.daysCtrl,
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) {
+                        final days = int.tryParse(v) ?? 0;
+                        if (days > 0) onDaysChanged?.call(days);
+                      },
+                      style: TextStyle(
+                        color: theme.textTheme.bodyLarge?.color,
+                        fontSize: 15.sp,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: "Or enter custom days",
+                        hintStyle: TextStyle(
+                          color: isDark
+                              ? Colors.white38
+                              : AppColors.lightTextTertiary,
+                          fontSize: 14.sp,
+                        ),
+                        filled: true,
+                        fillColor: isDark
+                            ? Colors.white.withValues(alpha: 0.07)
+                            : Colors.grey.shade100,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14.r),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 14.h),
+                  ],
+                  GestureDetector(
+                    onTap: onEndDatePick,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 14.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.07)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today,
+                            size: 18.sp,
+                            color: AppColors.primary,
+                          ),
+                          SizedBox(width: 10.w),
+                          Text(
+                            "Ends: ${DateFormat('dd MMM yyyy').format(durationState.endDate)}",
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: theme.textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(height: 24.h),
-              SizedBox(
-                width: double.infinity,
-                height: 52.h,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
+                  SizedBox(height: 24.h),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52.h,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14.r),
+                        ),
+                      ),
+                      onPressed: onSubmit,
+                      child: Text(
+                        "Start Challenge",
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
-                  onPressed: onSubmit,
-                  child: Text("Start Challenge", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-              ),
-              SizedBox(height: 8.h),
+                  SizedBox(height: 8.h),
                 ],
               ),
             ),
@@ -605,16 +806,24 @@ class _PresetChallengeSheetState extends State<_PresetChallengeSheet> {
   @override
   void initState() {
     super.initState();
-    if (!Get.isRegistered<ChallengesController>()) Get.put(ChallengesController());
+    if (!Get.isRegistered<ChallengesController>()) {
+      Get.put(ChallengesController());
+    }
     _ctrl = Get.find<ChallengesController>();
     _daysCtrl = TextEditingController(
-      text: widget.preset.durationDays > 0 ? widget.preset.durationDays.toString() : '30',
+      text: widget.preset.durationDays > 0
+          ? widget.preset.durationDays.toString()
+          : '30',
     );
     final showTarget = widget.preset.trackingType != 'no_spend_category';
     _targetCtrl = TextEditingController(
-      text: showTarget && widget.preset.targetAmount > 0 ? widget.preset.targetAmount.toStringAsFixed(0) : '',
+      text: showTarget && widget.preset.targetAmount > 0
+          ? widget.preset.targetAmount.toStringAsFixed(0)
+          : '',
     );
-    final initialDays = int.tryParse(_daysCtrl.text) ?? (widget.preset.durationDays > 0 ? widget.preset.durationDays : 30);
+    final initialDays =
+        int.tryParse(_daysCtrl.text) ??
+        (widget.preset.durationDays > 0 ? widget.preset.durationDays : 30);
     _durationState = _DurationState(
       endDate: DateTime.now().add(Duration(days: initialDays)),
       selectedDays: initialDays,
@@ -651,7 +860,9 @@ class _PresetChallengeSheetState extends State<_PresetChallengeSheet> {
     if (!mounted) return;
     setState(() {
       _durationState.selectedDays = days.clamp(1, 730);
-      _durationState.endDate = DateTime.now().add(Duration(days: _durationState.selectedDays));
+      _durationState.endDate = DateTime.now().add(
+        Duration(days: _durationState.selectedDays),
+      );
     });
   }
 
@@ -659,7 +870,8 @@ class _PresetChallengeSheetState extends State<_PresetChallengeSheet> {
     if (!mounted || _submitting) return;
     final showTarget = widget.preset.trackingType != 'no_spend_category';
     final target = showTarget
-        ? (double.tryParse(_targetCtrl.text) ?? widget.preset.targetAmount.toDouble())
+        ? (double.tryParse(_targetCtrl.text) ??
+              widget.preset.targetAmount.toDouble())
         : 0.0;
     final now = DateTime.now();
     final challenge = SavingsChallengeModel(
@@ -718,7 +930,9 @@ class _CustomChallengeSheetState extends State<_CustomChallengeSheet> {
   @override
   void initState() {
     super.initState();
-    if (!Get.isRegistered<ChallengesController>()) Get.put(ChallengesController());
+    if (!Get.isRegistered<ChallengesController>()) {
+      Get.put(ChallengesController());
+    }
     _ctrl = Get.find<ChallengesController>();
 
     _nameCtrl = TextEditingController();
@@ -761,7 +975,9 @@ class _CustomChallengeSheetState extends State<_CustomChallengeSheet> {
     if (!mounted) return;
     setState(() {
       _durationState.selectedDays = days.clamp(1, 730);
-      _durationState.endDate = DateTime.now().add(Duration(days: _durationState.selectedDays));
+      _durationState.endDate = DateTime.now().add(
+        Duration(days: _durationState.selectedDays),
+      );
     });
   }
 
@@ -808,7 +1024,11 @@ class TabBuilder extends StatefulWidget {
   final TabController controller;
   final Widget Function(int index) builder;
 
-  const TabBuilder({super.key, required this.controller, required this.builder});
+  const TabBuilder({
+    super.key,
+    required this.controller,
+    required this.builder,
+  });
 
   @override
   State<TabBuilder> createState() => _TabBuilderState();

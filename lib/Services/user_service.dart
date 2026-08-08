@@ -19,6 +19,7 @@ class UserService {
     'lent_money',
     'sms_rules',
     'category_rules',
+    'learning_data',
     // Liquid & Fixed Income
     'fd_accounts',
     'ppf_accounts',

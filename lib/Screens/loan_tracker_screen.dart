@@ -778,7 +778,7 @@ class _AddLoanSheetState extends State<_AddLoanSheet> {
                     decoration: BoxDecoration(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.black.withValues(alpha: 0.05),
+                          : AppColors.lightSurfaceCard,
                       borderRadius: BorderRadius.circular(12.r),
                     ),
                     child: Row(

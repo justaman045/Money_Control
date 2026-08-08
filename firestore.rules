@@ -14,6 +14,19 @@ service cloud.firestore {
           && adminDoc.data.isAdmin == true;
     }
 
+    function validTrialCap(ts) {
+      return ts is timestamp
+          && ts.toMillis() - request.time.toMillis() <= (45 * 24 * 60 * 60 * 1000);
+    }
+
+    // A doc write may only claim 'pro' via a recorded Google Play purchase
+    // (true purchase verification requires a Cloud Function).
+    function validProClaim(d) {
+      return d.subscriptionStatus == 'pro'
+          && d.purchaseToken is string
+          && d.purchaseToken.size() > 0;
+    }
+
     function validTransaction() {
       let d = request.resource.data;
       return d.keys().hasAll(['amount', 'date', 'senderId', 'recipientId'])
@@ -21,32 +34,77 @@ service cloud.firestore {
           && d.date is timestamp;
     }
 
-    function isReferralAllowed() {
+    // Owner update of their own profile. Blocks self-admin and self-referral
+    // spoofing. Trial end may not be pushed unreasonably far into the future.
+    // 'pro' status can only be claimed via a recorded Google Play purchase
+    // (true purchase verification requires a Cloud Function; this closes the
+    // naive "write subscriptionStatus: pro" self-grant hole).
+    function isOwnerUpdate(userEmail) {
       let affected = request.resource.data.diff(resource.data).affectedKeys();
-      let isReferralFields = affected.hasOnly(['referralCount', 'subscriptionStatus', 'trialEndDate']);
-      let targetHasCode = resource.data.keys().hasAny(['referralCode']);
       let d = request.resource.data;
       return request.auth != null
-          && targetHasCode
-          && isReferralFields
-          && (!affected.hasAny(['referralCount'])
-              || (d.referralCount is number && d.referralCount >= 0 && d.referralCount < 10000))
-          && (!affected.hasAny(['trialEndDate'])
-              || d.trialEndDate is timestamp)
+          && request.auth.token.email == userEmail
+          && !affected.hasAny(['isAdmin', 'referredBy'])
+          && (!affected.hasAny(['trialEndDate']) || validTrialCap(d.trialEndDate))
           && (!affected.hasAny(['subscriptionStatus'])
-              || d.subscriptionStatus in ['free', 'pending', 'pro']);
+              || (d.subscriptionStatus == 'pro'
+                  ? validProClaim(d)
+                  : (d.subscriptionStatus == 'pending'
+                      || d.subscriptionStatus == 'free')));
     }
 
-    function isPrivilegeElevation() {
+    // Owner records the referral code they applied to their own profile.
+    function isReferralApplication(userEmail) {
       let affected = request.resource.data.diff(resource.data).affectedKeys();
-      let blocked = ['isAdmin', 'referralCount', 'subscriptionStatus', 'trialEndDate', 'referredBy'];
-      return affected.hasAny(blocked);
+      let d = request.resource.data;
+      return request.auth != null
+          && request.auth.token.email == userEmail
+          && affected.hasOnly(['referredBy', 'trialEndDate'])
+          && (!affected.hasAny(['trialEndDate']) || d.trialEndDate is timestamp);
+    }
+
+    // A user earns Pro by referring someone: only a write to a DIFFERENT
+    // user's doc (the referrer, which has a referralCode) that increments the
+    // referral count and grants a trial may set subscriptionStatus to 'pro'.
+    function isReferralReward(userEmail) {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let d = request.resource.data;
+      return request.auth != null
+          && userEmail != request.auth.token.email
+          && resource.data.keys().hasAny(['referralCode'])
+          && affected.hasOnly(['referralCount', 'subscriptionStatus', 'trialEndDate'])
+          && d.subscriptionStatus == 'pro'
+          && d.trialEndDate is timestamp
+          && d.referralCount is number
+          && d.referralCount >= 0
+          && d.referralCount < 10000;
+    }
+
+    // Admins manage other users' subscriptions (approve/reject) but cannot
+    // mint new admins through this path.
+    function isAdminUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      return isAdmin() && !affected.hasAny(['isAdmin']);
     }
 
     match /users/{userEmail} {
       allow read: if isOwner(userEmail) || isAdmin();
-      allow create: if isOwner(userEmail);
-      allow update: if (isOwner(userEmail) && !isPrivilegeElevation()) || isReferralAllowed();
+      // isAdmin must not be settable on create — otherwise a user could
+      // delete + recreate their doc with isAdmin:true and read everyone's data.
+      // The trial and pro caps mirror isOwnerUpdate so a doc delete+recreate
+      // cannot bypass the 45-day trial limit or self-grant pro.
+      allow create: if isOwner(userEmail)
+          && !('isAdmin' in request.resource.data)
+          && (!('trialEndDate' in request.resource.data)
+              || validTrialCap(request.resource.data.trialEndDate))
+          && (!('subscriptionStatus' in request.resource.data)
+              || request.resource.data.subscriptionStatus == 'free'
+              || request.resource.data.subscriptionStatus == 'pending'
+              || validProClaim(request.resource.data));
+      allow update: if isOwnerUpdate(userEmail)
+          || isReferralApplication(userEmail)
+          || isReferralReward(userEmail)
+          || isAdminUpdate();
       allow delete: if isOwner(userEmail);
 
       match /transactions/{txId} {
@@ -95,6 +153,12 @@ service cloud.firestore {
       }
 
       match /challenges/{challengeId} {
+        allow read, write: if isOwner(userEmail);
+      }
+
+      // SMS import rules — must exist or account deletion / GDPR export
+      // (which list this collection) are denied by the catch-all.
+      match /sms_rules/{docId} {
         allow read, write: if isOwner(userEmail);
       }
 

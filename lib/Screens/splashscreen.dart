@@ -5,6 +5,7 @@ import 'package:money_control/Components/animated_widget.dart';
 import 'package:money_control/Components/methods.dart';
 import 'package:money_control/Models/splash_data.dart';
 import 'package:money_control/Screens/loginscreen.dart';
+import 'package:money_control/Services/performance_controller.dart';
 
 class AnimatedSplashScreen extends StatefulWidget {
   const AnimatedSplashScreen({super.key});
@@ -57,6 +58,16 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
     }
   }
 
+  /// Lite mode: render statically instead of running the fade/slide-in so the
+  /// splash paints with no animation work on low-end devices.
+  Widget _fadeSlide(Widget child, {required double slideBegin}) {
+    if (PerformanceController.to.liteMode.value) return child;
+    return child
+        .animate()
+        .fadeIn(duration: 600.ms)
+        .slideY(begin: slideBegin, end: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final splashData = splashPages[currentIndex];
@@ -107,27 +118,37 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Image Container with Glow
-                      Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: isDark
-                                      ? const Color(
-                                          0xFF6C63FF,
-                                        ).withValues(alpha: 0.15)
-                                      : const Color(
-                                          0xFF3F51B5,
-                                        ).withValues(alpha: 0.1),
-                                  blurRadius: 60.w,
-                                  spreadRadius: 20.w,
-                                ),
-                              ],
-                            ),
-                            child: CAnimatedWidget(image: splashData.image),
-                          )
-                          .animate(key: ValueKey(currentIndex))
-                          .scale(duration: 600.ms, curve: Curves.easeOutBack),
+                      (PerformanceController.to.liteMode.value
+                          ? Container(
+                              decoration: BoxDecoration(shape: BoxShape.circle),
+                              child: CAnimatedWidget(image: splashData.image),
+                            )
+                          : Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: isDark
+                                            ? const Color(
+                                                0xFF6C63FF,
+                                              ).withValues(alpha: 0.15)
+                                            : const Color(
+                                                0xFF3F51B5,
+                                              ).withValues(alpha: 0.1),
+                                        blurRadius: 60.w,
+                                        spreadRadius: 20.w,
+                                      ),
+                                    ],
+                                  ),
+                                  child: CAnimatedWidget(
+                                    image: splashData.image,
+                                  ),
+                                )
+                                .animate(key: ValueKey(currentIndex))
+                                .scale(
+                                  duration: 600.ms,
+                                  curve: Curves.easeOutBack,
+                                )),
                       SizedBox(height: 40.h),
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -136,36 +157,32 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
                           child: Column(
                             key: ValueKey(splashData.headline),
                             children: [
-                              Text(
-                                    splashData.headline,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 28.sp,
-                                      fontWeight: FontWeight.bold,
-                                      color: textColor,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  )
-                                  .animate()
-                                  .fadeIn(duration: 600.ms)
-                                  .slideY(
-                                    begin: 0.3,
-                                    end: 0,
-                                    curve: Curves.easeOut,
+                              _fadeSlide(
+                                Text(
+                                  splashData.headline,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 28.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                    letterSpacing: 0.5,
                                   ),
+                                ),
+                                slideBegin: 0.3,
+                              ),
                               SizedBox(height: 16.h),
-                              Text(
-                                    splashData.subtitle,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize: 15.sp,
-                                      color: secondaryTextColor,
-                                      height: 1.5,
-                                    ),
-                                  )
-                                  .animate()
-                                  .fadeIn(duration: 600.ms, delay: 100.ms)
-                                  .slideY(begin: 0.1, end: 0),
+                              _fadeSlide(
+                                Text(
+                                  splashData.subtitle,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 15.sp,
+                                    color: secondaryTextColor,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                slideBegin: 0.1,
+                              ),
                             ],
                           ),
                         ),

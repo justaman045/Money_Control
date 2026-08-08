@@ -6,11 +6,11 @@ import 'package:money_control/Components/tx_tile.dart';
 import 'package:get/get.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Components/empty_state.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Components/shimmer_loading.dart';
+import 'package:money_control/Utils/animation.dart';
 
 class RecentPaymentList extends StatefulWidget {
   final Color? cardColor;
@@ -121,18 +121,7 @@ class _RecentPaymentListState extends State<RecentPaymentList> {
 
             if (!shouldAnimate) return tile;
 
-            return tile
-                .animate(
-                  key: ValueKey('anim_${tx.id}'),
-                  delay: (index * 50).ms,
-                )
-                .fadeIn(duration: 300.ms, curve: Curves.easeOut)
-                .slideY(
-                  begin: 0.2,
-                  end: 0,
-                  duration: 300.ms,
-                  curve: Curves.easeOut,
-                );
+            return animatedItem(tile, index, slide: true);
           }).toList(),
         ),
       );

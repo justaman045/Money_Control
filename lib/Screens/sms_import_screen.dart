@@ -362,14 +362,20 @@ class _SmsImportScreenState extends State<SmsImportScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: isImported
-                                ? Colors.white.withValues(alpha: 0.02)
-                                : Colors.white.withValues(alpha: 0.05),
+                                ? isDark
+                                    ? Colors.white.withValues(alpha: 0.02)
+                                    : AppColors.lightSurface
+                                : isDark
+                                    ? Colors.white.withValues(alpha: 0.05)
+                                    : AppColors.lightSurfaceCard,
                             borderRadius: BorderRadius.circular(12.r),
                             border: Border.all(
                               color: isSelected
                                   ? Colors.cyan
                                   : isImported
-                                      ? Colors.white10
+                                      ? isDark
+                                          ? Colors.white10
+                                          : AppColors.lightBorder
                                       : Colors.transparent,
                             ),
                           ),

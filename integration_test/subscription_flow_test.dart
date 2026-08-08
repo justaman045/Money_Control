@@ -1,187 +1,111 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:money_control/main.dart' as app;
-import 'package:get/get.dart';
+import 'test_helpers.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  Get.testMode = true;
 
-  testWidgets('E2E: Subscription Flow (Add, Edit, Pay, Verify)', (
+  testWidgetsWithScreenshots('E2E: Subscription Flow (Add, Edit, Pay, Verify)', (
     WidgetTester tester,
   ) async {
-    // 1. App Launch
-    await app.mainCommon(isTest: true);
-    await tester.pump(const Duration(milliseconds: 1500));
+    // 1-3. App Launch + Splash/Onboarding + Login
+    await launchAndSignIn(tester);
 
-    // 2. Splash Screen Handling
-    await tester.pumpAndSettle(const Duration(seconds: 2));
-    if (find.text('Get Started').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Get Started'));
-      await tester.pump(const Duration(milliseconds: 1500));
-    }
-    if (find.text('Continue').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Continue'));
-      await tester.pump(const Duration(milliseconds: 1500));
-    }
-    if (find.text("Let's Start").evaluate().isNotEmpty) {
-      await tester.tap(find.text("Let's Start"));
-      await tester.pump(const Duration(milliseconds: 1500));
-    }
+    final isPro = await probePro(tester);
 
-    // 3. Login
-    await tester.pump(const Duration(milliseconds: 1500));
-    if (find.text('Sign In').evaluate().isNotEmpty) {
-      final emailField = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField &&
-            (widget.decoration?.hintText?.contains('email') ?? false),
-      );
-      await tester.enterText(emailField, 'bitimat645@cimario.com');
-      await tester.pump(const Duration(milliseconds: 1500));
+    // 4. Navigate to Subscriptions (Recurring Payments) screen via AppBar icon.
+    // Pro/trial accounts open the feature; free accounts hit the upgrade gate.
+    await tapUntilMarker(
+      tester,
+      find.byIcon(Icons.event_repeat),
+      isPro ? find.text('Subscriptions') : find.text('Monthly'),
+    );
 
-      final passwordField = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField &&
-            (widget.decoration?.hintText?.contains('password') ?? false),
-      );
-      await tester.enterText(passwordField, 'somkumud');
-      await tester.pump(const Duration(milliseconds: 1500));
-
-      await tester.tap(find.text('Sign In'));
-      await tester.pumpAndSettle(const Duration(seconds: 5));
+    if (!isPro) {
+      await assertUpgradeScreen(tester);
+      return;
     }
 
-    // 4. Navigate to Subscriptions Screen
-    expect(find.text('Total Balance'), findsOneWidget);
-
-    // Find Subscription Icon in AppBar (Icons.event_repeat)
-    // It's the second action button usually
-    final subscriptionIcon = find.byIcon(Icons.event_repeat);
-    await tester.tap(subscriptionIcon);
-    await tester.pump(const Duration(seconds: 2));
-
+    await waitFor(tester, find.text('Subscriptions'));
     expect(find.text('Subscriptions'), findsOneWidget);
+    await waitFor(tester, find.text('Add Subscription'));
     expect(find.text('Add Subscription'), findsOneWidget);
 
     // 5. Add Subscription
-    await tester.tap(find.text('Add Subscription'));
-    await tester.pump(const Duration(milliseconds: 1500));
-
-    // Form Fill
+    await tapUntilMarker(
+      tester,
+      find.text('Add Subscription'),
+      find.text('New Subscription'),
+    );
     expect(find.text('New Subscription'), findsOneWidget);
 
-    // Or just find by hint/label logic if ancestor is tricky. Let's try simpler first.
-    // Finding by type is order dependent.
-    // Name is 1st, Amount is 2nd.
-
-    await tester.enterText(find.byType(TextFormField).at(0), 'Netflix Test');
+    final name = uniqueName('NetflixTest');
+    await tester.enterText(find.byType(TextFormField).at(0), name);
+    await pumpReal(tester);
     await tester.enterText(find.byType(TextFormField).at(1), '499');
+    await pumpReal(tester);
 
     // Save
-    await tester.tap(find.text('Save'));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapUntilMarker(tester, find.text('Save'), find.text(name));
 
     // Verify Creation
-    expect(
-      find.text('Netflix Test'),
-      findsWidgets,
-    ); // Might appear multiple times if not unique, but should find it.
+    expect(find.text(name), findsWidgets);
     expect(find.text('₹499'), findsWidgets);
 
     // 6. Edit Subscription (Change Date)
-    // Find Edit Icon (pencil) on the card
     final editIcon = find.byIcon(Icons.edit_rounded).first;
-    await tester.tap(editIcon);
-    await tester.pump(const Duration(milliseconds: 1500));
-
+    await tapUntilMarker(tester, editIcon, find.text('Edit Subscription'));
     expect(find.text('Edit Subscription'), findsOneWidget);
 
     // Tap Date Picker Row
-    // It has "Next Payment:" text
-    await tester.tap(find.byIcon(Icons.calendar_today));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapWhenVisible(tester, find.byIcon(Icons.calendar_today));
 
-    // Select a future date (e.g. 28th of current month or next, let's just pick a valid day)
-    // We'll just tap 'OK' to confirm whatever default is selected or try to pick '28'.
-    // Default is usually today + 30 days in the code logic for new, but here we are editing.
-    // Let's just tap 'OK' to keep it simple, or '28' if visible.
-    // Actually the user requirement is "edit the due date to any date in future".
-    // Let's pick '28' if available, otherwise just OK is fine as long as it saves.
+    // Pick '28' if available, otherwise accept the default, then confirm.
     if (find.text('28').evaluate().isNotEmpty) {
       await tester.tap(find.text('28'));
+      await pumpReal(tester);
     }
-    await tester.tap(find.text('OK'));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapWhenVisible(tester, find.text('OK'));
 
     // Save
-    await tester.tap(find.text('Save'));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapWhenVisible(tester, find.text('Save'));
 
     // 7. Pay (Mark as Paid)
-    // Open Details by tapping the card body (not the edit icon).
-    await tester.tap(find.text('Netflix Test').first);
-    await tester.pump(const Duration(milliseconds: 1500));
-
+    await tapUntilMarker(tester, find.text(name).first, find.text('Subscription Details'));
     expect(find.text('Subscription Details'), findsOneWidget);
 
-    // Tap "Mark Paid"
-    await tester.tap(find.text('Mark Paid'));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapUntilMarker(tester, find.text('Mark Paid'), find.text('Confirm'));
 
     // Confirm Dialog
     expect(find.text('Confirm'), findsOneWidget);
-    await tester.tap(find.text('Confirm'));
-    await tester.pump(const Duration(milliseconds: 1500));
+    await tapUntilMarker(tester, find.text('Confirm'), find.text('Payment History'));
 
-    // Verify "Mark Paid" button might be gone or disabled, or History updated.
     // Check History List for transaction
-    await tester.pump(const Duration(seconds: 3)); // Wait for firestore update
+    await pumpReal(tester, const Duration(seconds: 3)); // Wait for Firestore update
     expect(find.text('Payment History'), findsOneWidget);
-    // Should see date and amount in list
     expect(find.textContaining('499'), findsWidgets);
 
     // 8. Verify Home Screen Reflection
-    await tester.tap(
+    await tapWhenVisible(tester, find.byIcon(Icons.arrow_back_ios_new_rounded));
+    await tapUntilMarker(
+      tester,
       find.byIcon(Icons.arrow_back_ios_new_rounded),
-    ); // Back to Sub list
-    await tester.pump(const Duration(milliseconds: 1500));
-    await tester.tap(
-      find.byIcon(Icons.arrow_back_ios_new_rounded),
-    ); // Back to Home
-    await tester.pump(const Duration(milliseconds: 1500));
-
+      find.text('Total Balance'),
+    );
     expect(find.text('Total Balance'), findsOneWidget);
 
-    // Check Recent Transactions for "Netflix Test" (Wait for stream)
     // Perform Pull-to-Refresh to ensure list is updated
-    await tester.drag(find.byType(RefreshIndicator), const Offset(0, 300));
-    await tester.pump(const Duration(seconds: 3));
+    await dragToRefresh(tester);
 
-    // Should be at the top of the list (or in the list at least)
-    expect(find.text('Netflix Test', skipOffstage: false), findsWidgets);
-    expect(
-      find.textContaining('499', skipOffstage: false),
-      findsWidgets,
-    ); // Outflow
+    await waitFor(tester, find.text(name, skipOffstage: false));
+    expect(find.text(name, skipOffstage: false), findsWidgets);
+    expect(find.textContaining('499', skipOffstage: false), findsWidgets);
 
     // 9. Verify Details from Home
-    // Scroll to it if needed
-    final netflixItem = find.text('Netflix Test').first;
-    await tester.scrollUntilVisible(
-      netflixItem,
-      500.0,
-      scrollable: find.descendant(
-        of: find.byType(SingleChildScrollView),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    await tester.tap(netflixItem);
-    await tester.pump(const Duration(milliseconds: 1500));
-
+    await tapUntilMarker(tester, find.text(name).first, find.text('Transaction Details'));
     expect(find.text('Transaction Details'), findsWidgets);
     expect(find.text('Money Sent!'), findsWidgets);
-    expect(find.text('Netflix Test'), findsOneWidget);
+    expect(find.text(name), findsOneWidget);
   });
 }

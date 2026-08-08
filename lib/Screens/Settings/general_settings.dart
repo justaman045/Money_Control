@@ -5,6 +5,7 @@ import 'package:money_control/Screens/budget.dart';
 import 'package:money_control/Screens/category_management.dart';
 import 'package:money_control/Screens/notification_history.dart';
 import 'package:money_control/Services/background_worker.dart';
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/main.dart'; // For ThemeController
 import 'package:money_control/Components/colors.dart';
@@ -150,6 +151,30 @@ class _GeneralSettingsScreenState extends State<GeneralSettingsScreen> {
                       activeThumbColor: const Color(0xFF00E5FF),
                       onChanged: (val) {
                         themeController.setTheme(val);
+                      },
+                    ),
+                  );
+                }),
+                Obx(() {
+                  final perf = PerformanceController.to;
+                  final manual = perf.userOverridden.value;
+                  return SettingsTile(
+                    icon: Icons.bolt_outlined,
+                    title: "Lite Mode",
+                    subtitle: manual
+                        ? "Manual override active — tap here to restore auto detection"
+                        : "Improves performance on low-end devices by "
+                            "reducing animations and visual effects",
+                    onTap: manual ? perf.resetToAuto : null,
+                    trailing: Switch(
+                      value: perf.liteMode.value,
+                      activeThumbColor: const Color(0xFF00E5FF),
+                      onChanged: (val) {
+                        if (val) {
+                          perf.setLiteMode(true);
+                        } else {
+                          perf.setLiteMode(false);
+                        }
                       },
                     ),
                   );

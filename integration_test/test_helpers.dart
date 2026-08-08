@@ -1,0 +1,760 @@
+// Shared helpers for E2E integration tests. These make login/onboarding and
+// common flows robust against real-device timing so the suite can pass
+// deterministically in CI (fresh emulator, live Firebase account).
+
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:integration_test/integration_test.dart';
+import 'package:money_control/Components/bottom_nav_bar.dart';
+import 'package:money_control/main.dart' as app;
+import 'package:path_provider/path_provider.dart';
+import 'test_credentials.dart';
+
+/// Sanitizes a test description into a filesystem-safe name (max 60 chars).
+String sanitizeName(String value) {
+  final cleaned = value.replaceAll(RegExp(r'[^\w]'), '_').replaceAll(RegExp(r'_+'), '_');
+  return cleaned.length > 60 ? cleaned.substring(0, 60) : cleaned;
+}
+
+/// Writes [bytes] to `<app cache>/screenshots/<name>.png` so CI can pull them
+/// with `adb exec-out run-as <pkg> cat`. Errors are swallowed — the screenshot
+/// must never mask the real test failure.
+Future<void> _saveScreenshot(WidgetTester tester, List<int> bytes, String name) async {
+  final base = await getTemporaryDirectory();
+  final dir = Directory('${base.path}/screenshots');
+  await dir.create(recursive: true);
+  await File('${dir.path}/$name.png').writeAsBytes(bytes);
+}
+
+/// Captures the current screen to the device cache. Android only: requires
+/// `convertFlutterSurfaceToImage()` (called at the start of
+/// [testWidgetsWithScreenshots]) and a fresh frame before capture.
+Future<void> captureScreenshot(WidgetTester tester, String name) async {
+  try {
+    final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+    await tester.pump();
+    final bytes = await binding.takeScreenshot(name);
+    await _saveScreenshot(tester, bytes, name);
+  } catch (e) {
+    // ignore: avoid_print
+    print('Screenshot capture failed for $name: $e');
+  }
+}
+
+/// [testWidgets] variant that automatically captures a screenshot of the exact
+/// failing state to the device cache. Useful for debugging flaky E2E runs in
+/// CI without `flutter drive` (no host callback exists under `flutter test`).
+void testWidgetsWithScreenshots(
+  String description,
+  Future<void> Function(WidgetTester tester) body,
+) {
+  testWidgets(description, (tester) async {
+    final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+    try {
+      await binding.convertFlutterSurfaceToImage();
+      await tester.pump();
+    } catch (_) {}
+    try {
+      await body(tester);
+      await captureScreenshot(tester, 'result_${sanitizeName(description)}');
+    } catch (e) {
+      await captureScreenshot(tester, 'failure_${sanitizeName(description)}');
+      rethrow;
+    }
+  });
+}
+
+/// pumpAndSettle that never throws. Home/splash screens may keep running
+/// background animations that prevent the default 10-minute timeout logic.
+Future<void> pumpAndSettleSafe(
+  WidgetTester tester, {
+  Duration timeout = const Duration(seconds: 8),
+}) async {
+  try {
+    await tester.pumpAndSettle(timeout);
+  } catch (_) {
+    // Fall through; callers re-check state with finders.
+  }
+}
+
+/// Real-time wait + frame pump. `tester.pump(Duration(...))` advances a
+/// virtual clock and may not wait wall-clock time in the live binding, so
+/// polling loops that need the app's async work (auth restore, Firestore)
+/// to actually progress should use this.
+Future<void> pumpReal(WidgetTester tester, [Duration d = const Duration(seconds: 1)]) async {
+  await Future<void>.delayed(d);
+  await tester.pump();
+}
+
+/// Taps through the 3-page welcome walkthrough (splash pre-login or onboarding
+/// post-login) when present. Safe to call at any point; no-ops when absent.
+/// Polls (real time) up to 30s for the first splash page, because a cold app
+/// boot on the emulator can take several seconds to render the first frame.
+Future<void> handleSplashAndOnboarding(WidgetTester tester) async {
+  await pumpAndSettleSafe(tester);
+  for (var i = 0; i < 30; i++) {
+    if (find.text('Total Balance').evaluate().isNotEmpty) return;
+    if (find.text('Sign In').evaluate().isNotEmpty) return;
+    if (find.text('Get Started').evaluate().isNotEmpty) break;
+    await pumpReal(tester);
+  }
+  if (find.text('Get Started').evaluate().isNotEmpty) {
+    await tester.tap(find.text('Get Started'));
+    await pumpAndSettleSafe(tester);
+  }
+  if (find.text('Continue').evaluate().isNotEmpty) {
+    await tester.tap(find.text('Continue'));
+    await pumpAndSettleSafe(tester);
+  }
+  if (find.text("Let's Start").evaluate().isNotEmpty) {
+    await tester.tap(find.text("Let's Start"));
+    await pumpAndSettleSafe(tester);
+  }
+}
+
+/// Polls (real time) until [finder] is present. Fails if [seconds] pass.
+Future<void> waitFor(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (finder.evaluate().isNotEmpty) return;
+  }
+  fail('Timed out waiting for ${finder.toString()}');
+}
+
+/// Polls (real time) until [finder] is present, returning false instead of
+/// failing when [seconds] pass. Used to retry flaky taps/navigation.
+Future<bool> waitForCheck(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (finder.evaluate().isNotEmpty) return true;
+  }
+  return false;
+}
+
+/// Taps [tapTarget], then verifies [marker] appears. Retries the whole tap a
+/// few times because on-device taps can silently miss while overlays (SnackBars,
+/// the auto-hiding nav bar) are animating. Fails if [marker] never appears.
+Future<void> tapUntilMarker(
+  WidgetTester tester,
+  Finder tapTarget,
+  Finder marker, {
+  int attempts = 3,
+  int markerSeconds = 12,
+}) async {
+  for (var i = 0; i < attempts; i++) {
+    await tapWhenVisible(tester, tapTarget);
+    await pumpAndSettleSafe(tester);
+    await pumpReal(tester);
+    if (await waitForCheck(tester, marker, seconds: markerSeconds)) {
+      await pumpReal(tester);
+      return;
+    }
+  }
+  fail('Timed out: ${tapTarget.toString()} did not reveal ${marker.toString()}');
+}
+
+/// Bounded scroll: drags the on-screen (active) scrollable until [finder] is
+/// actually on-screen. Uses `ensureVisible` (which reveals the target within
+/// its ancestor scrollable) and falls back to manual drags FROM THE SCREEN
+/// CENTER — not `Scrollable.first`, which can resolve to an inactive tab's
+/// `IgnorePointer`-wrapped scrollable in the page stack. Returns true once
+/// [finder] is visible on screen.
+Future<bool> scrollUntilVisible(
+  WidgetTester tester,
+  Finder finder, {
+  Offset scrollOffset = const Offset(0, -250),
+  int maxDrags = 20,
+}) async {
+  bool onScreen() {
+    if (finder.evaluate().isEmpty) return false;
+    try {
+      final rect = tester.getRect(finder.first);
+      final size =
+          tester.view.physicalSize / tester.view.devicePixelRatio;
+      const margin = 24.0;
+      return rect.center.dx >= margin &&
+          rect.center.dx <= size.width - margin &&
+          rect.center.dy >= margin &&
+          rect.center.dy <= size.height - margin;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Offset dragStart() {
+    final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+    return Offset(size.width / 2, size.height / 2);
+  }
+
+  for (var i = 0; i < maxDrags; i++) {
+    await pumpReal(tester);
+    if (onScreen()) return true;
+    try {
+      await tester.ensureVisible(finder.first);
+    } catch (_) {}
+    await pumpReal(tester);
+    if (onScreen()) return true;
+    await tester.dragFrom(dragStart(), scrollOffset);
+    await pumpReal(tester);
+  }
+  return onScreen();
+}
+
+/// Bounded tap: polls (real time) until [finder] is on-screen, scrolling with
+/// manual drags even while the target is unbuilt (lazy sliver lists), then taps
+/// it. Fails if [seconds] pass.
+Future<void> tapWhenVisible(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    final scrolled = await scrollUntilVisible(tester, finder, maxDrags: 2);
+    if (!scrolled) continue;
+    await pumpReal(tester);
+    if (finder.evaluate().isEmpty) continue;
+    try {
+      final rect = tester.getRect(finder.first);
+      final size =
+          tester.view.physicalSize / tester.view.devicePixelRatio;
+      const margin = 24.0;
+      final centerOnScreen = rect.center.dx >= margin &&
+          rect.center.dx <= size.width - margin &&
+          rect.center.dy >= margin &&
+          rect.center.dy <= size.height - margin;
+      if (!centerOnScreen) continue;
+    } catch (_) {
+      continue;
+    }
+    await tester.tap(finder.first, warnIfMissed: false);
+    return;
+  }
+  fail('Timed out waiting for ${finder.toString()}');
+}
+
+/// Returns true once the home screen ('Total Balance') is visible, polling up
+/// to [seconds] seconds of real time.
+Future<bool> waitForHome(
+  WidgetTester tester, {
+  int seconds = 120,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (find.text('Total Balance').evaluate().isNotEmpty) return true;
+  }
+  return find.text('Total Balance').evaluate().isNotEmpty;
+}
+
+/// Signs in with the test account when the login screen is showing. Returns
+/// true if home was reached. Safe to call when already signed in (no-op).
+/// Retries the sign-in a few times because the emulator's network to Firebase
+/// can be slow/flaky.
+Future<bool> loginIfNeeded(WidgetTester tester) async {
+  if (find.text('Total Balance').evaluate().isNotEmpty) return true;
+
+  // The login screen can lag the splash walkthrough on slow boots — poll for
+  // it rather than giving up on the first frame.
+  for (var i = 0; i < 30; i++) {
+    if (find.text('Sign In').evaluate().isNotEmpty) break;
+    await pumpReal(tester);
+  }
+  if (find.text('Sign In').evaluate().isEmpty) return false;
+
+  final emailField = find.byWidgetPredicate(
+    (w) =>
+        w is TextField &&
+        (w.decoration?.hintText?.toLowerCase().contains('email') ?? false),
+  );
+  final passwordField = find.byWidgetPredicate(
+    (w) =>
+        w is TextField &&
+        (w.decoration?.hintText?.toLowerCase().contains('password') ?? false),
+  );
+  if (emailField.evaluate().isEmpty || passwordField.evaluate().isEmpty) {
+    return false;
+  }
+
+  final loginButton = find.text('Sign In');
+  for (var attempt = 0; attempt < 3; attempt++) {
+    await tester.enterText(emailField, kTestEmail);
+    await pumpReal(tester);
+    await tester.enterText(passwordField, kTestPassword);
+    await pumpReal(tester);
+
+    // Dismiss the keyboard so the Sign In button is not covered on the
+    // emulator.
+    FocusManager.instance.primaryFocus?.unfocus();
+    await pumpReal(tester);
+
+    await scrollUntilVisible(tester, loginButton);
+    await pumpReal(tester);
+    await tester.tap(loginButton, warnIfMissed: false);
+    final reached = await waitForHome(tester);
+    if (reached) return true;
+  }
+  return false;
+}
+
+/// Launches the app and brings it to the home screen, tapping through splash/
+/// onboarding and signing in when needed. Fails the test if home is not
+/// reached (so failures point at login/onboarding, not later finders).
+Future<void> launchAndSignIn(WidgetTester tester) async {
+  await app.mainCommon(isTest: true);
+  await pumpAndSettleSafe(tester, timeout: const Duration(seconds: 5));
+  await handleSplashAndOnboarding(tester);
+  await pumpAndSettleSafe(tester);
+  await loginIfNeeded(tester);
+  final reachedHome = await waitForHome(tester);
+  if (!reachedHome) {
+    final user = FirebaseAuth.instance.currentUser;
+    fail(
+      'Home screen (Total Balance) was not reached. '
+      'auth=${user?.email} verified=${user?.emailVerified} '
+      'uid=${user?.uid}',
+    );
+  }
+}
+
+/// Waits until [GetX] controller is registered, so tests can safely
+/// `Get.find<T>()` after login regardless of Phase-2 registration timing.
+Future<void> waitForController(
+  WidgetTester tester,
+  bool Function() isRegistered, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (isRegistered()) return;
+  }
+}
+
+/// On the Payment screen, ensures a category chip exists, adding it through the
+/// "Add" dialog when missing.
+Future<void> ensureCategoryExists(
+  WidgetTester tester,
+  String categoryName,
+) async {
+  await pumpAndSettleSafe(tester);
+  if (find.text(categoryName).evaluate().isNotEmpty) return;
+
+  await tester.tap(find.text('Add'));
+  await pumpAndSettleSafe(tester);
+
+  final newCatField = find.byType(TextField).last;
+  await tester.enterText(newCatField, categoryName);
+  await pumpAndSettleSafe(tester);
+
+  final dialogAddButton = find.descendant(
+    of: find.byType(Dialog),
+    matching: find.text('Add'),
+  );
+  await tester.tap(dialogAddButton);
+  await pumpAndSettleSafe(tester);
+
+  // If the dialog is still open (e.g. async category write), retry once.
+  if (find.byType(Dialog).evaluate().isNotEmpty) {
+    await tester.tap(dialogAddButton);
+    await pumpAndSettleSafe(tester);
+  }
+}
+
+/// From the home screen, creates an expense ([receive] == false) or income
+/// ([receive] == true) transaction through the UI, returning to the home screen.
+Future<void> createTransaction(
+  WidgetTester tester, {
+  required bool receive,
+  required String name,
+  required String amount,
+  String category = 'Food',
+}) async {
+  final submitFinder = find.text(receive ? 'RECEIVE' : 'SEND');
+
+  // Tap the Send/Receive quick action on the home balance card.
+  final toggle = find.text(receive ? 'Receive' : 'Send').last;
+  for (var i = 0; i < 30; i++) {
+    await pumpReal(tester);
+    if (toggle.evaluate().isNotEmpty) break;
+  }
+  await tester.ensureVisible(toggle);
+  await pumpAndSettleSafe(tester);
+  await tester.tap(toggle, warnIfMissed: false);
+  await pumpAndSettleSafe(tester);
+
+  // Wait for the payment screen to actually open before filling the form.
+  for (var i = 0; i < 30; i++) {
+    await pumpReal(tester);
+    if (submitFinder.evaluate().isNotEmpty) break;
+  }
+  if (submitFinder.evaluate().isEmpty) {
+    fail('Payment screen did not open for ${receive ? 'Receive' : 'Send'}');
+  }
+
+  await ensureCategoryExists(tester, category);
+
+  // Select the category chip.
+  final categoryChip = find.text(category).last;
+  await tester.ensureVisible(categoryChip);
+  await pumpAndSettleSafe(tester);
+  await tester.tap(categoryChip);
+  await pumpAndSettleSafe(tester);
+
+  // Amount field (hint '0.00') then Sender/Recipient field (hint 'Enter name').
+  await tester.enterText(find.widgetWithText(TextField, '0.00'), amount);
+  await pumpAndSettleSafe(tester);
+  await tester.enterText(find.widgetWithText(TextField, 'Enter name'), name);
+  await pumpAndSettleSafe(tester);
+
+  FocusManager.instance.primaryFocus?.unfocus();
+  await pumpAndSettleSafe(tester);
+
+  final submit = submitFinder.last;
+  await tester.ensureVisible(submit);
+  await pumpAndSettleSafe(tester);
+  await tester.tap(submit);
+  await pumpAndSettleSafe(tester);
+
+  // Wait for the payment screen to actually pop. The save triggers a confetti
+  // celebration (~700 ms) before Navigator.pop, so the screen lingers even
+  // though 'Total Balance' is already present in the offstage home route below.
+  for (var i = 0; i < 90; i++) {
+    await pumpReal(tester);
+    if (submitFinder.evaluate().isEmpty) break;
+  }
+  if (submitFinder.evaluate().isNotEmpty) {
+    fail('Payment screen did not close after submitting transaction');
+  }
+  await waitForHome(tester);
+}
+
+/// From the home screen, creates a receive transaction through the UI.
+Future<void> createReceiveTransaction(
+  WidgetTester tester, {
+  required String name,
+  required String amount,
+  String category = 'Salary',
+}) async {
+  await createTransaction(
+    tester,
+    receive: true,
+    name: name,
+    amount: amount,
+    category: category,
+  );
+}
+
+/// Unique-ish name so repeated runs against the shared account don't collide
+/// with data left behind by earlier runs.
+String uniqueName(String prefix) =>
+    '${prefix}_${DateTime.now().millisecondsSinceEpoch % 100000}';
+
+bool _isHomeVisible(WidgetTester tester) =>
+    find.text('Total Balance').evaluate().isNotEmpty &&
+    find.byIcon(Icons.search).evaluate().isNotEmpty;
+
+/// Determines Pro status from the home AppBar badge (cyan verified badge =
+/// Pro/trial, diamond = free). Polls until the badge renders.
+Future<bool> probePro(WidgetTester tester, {int seconds = 40}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (find.byIcon(Icons.verified_user_rounded).evaluate().isNotEmpty) {
+      return true;
+    }
+    if (find.byIcon(Icons.diamond_outlined).evaluate().isNotEmpty) {
+      return false;
+    }
+  }
+  fail('Could not determine Pro status from the home AppBar badge');
+}
+
+/// Asserts the SubscriptionScreen upgrade gate is showing (plan cards visible)
+/// and closes it back to the home screen.
+Future<void> assertUpgradeScreen(WidgetTester tester) async {
+  await waitFor(tester, find.text('Monthly'));
+  expect(find.text('Monthly'), findsWidgets);
+  expect(find.text('Yearly'), findsWidgets);
+  await tapWhenVisible(tester, find.byIcon(Icons.close));
+  await pumpAndSettleSafe(tester);
+  await waitForHome(tester);
+}
+
+/// The nav bar's icon, scoped so a page-level icon with the same [icon] (e.g.
+/// the Wealth and Settings pages both contain a tune icon) can never shadow the
+/// real tab. Falls back to the unscoped finder on tablet (nav rail) layouts.
+Finder _navBarIcon(WidgetTester tester, IconData icon) {
+  if (find.byType(BottomNavBar).evaluate().isNotEmpty) {
+    return find.descendant(
+      of: find.byType(BottomNavBar),
+      matching: find.byIcon(icon),
+    );
+  }
+  return find.byIcon(icon);
+}
+
+/// True when [finder] matches a widget rendered on the actual page (above the
+/// bottom nav pill). Rejects matches that only exist as the always-visible
+/// bottom-nav labels (e.g. 'Settings'), which are present even when the target
+/// tab was never activated.
+bool _markerOnPage(WidgetTester tester, Finder finder) {
+  if (finder.evaluate().isEmpty) return false;
+  final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+  for (final e in finder.evaluate()) {
+    try {
+      final box = e.renderObject;
+      if (box is! RenderBox || !box.attached) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      final centerY = topLeft.dy + box.size.height / 2;
+      if (centerY < size.height - 100) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
+/// Dismisses modal overlays that would otherwise swallow taps. The main one is
+/// the Wealth "Smart Wealth Builder" age prompt: selecting the Settings tab
+/// eagerly builds every intermediate page — including the Wealth page, whose
+/// load completes and pushes this non-dismissible dialog. Tapping "Show All
+/// Cards" keeps every card visible and marks the prompt as shown (device
+/// SharedPreferences), so it never reappears for the rest of the session.
+/// Other Dialog/AlertDialog/BottomSheet/SnackBar overlays are dismissed via a
+/// top-left barrier tap.
+Future<void> dismissDialogs(WidgetTester tester, {int seconds = 8}) async {
+  for (var i = 0; i < seconds * 4; i++) {
+    if (find.text('Show All Cards').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Show All Cards'), warnIfMissed: false);
+      await pumpAndSettleSafe(tester);
+      await pumpReal(tester);
+      continue;
+    }
+    if (find.byType(Dialog).evaluate().isNotEmpty ||
+        find.byType(AlertDialog).evaluate().isNotEmpty ||
+        find.byType(BottomSheet).evaluate().isNotEmpty) {
+      await tester.tapAt(const Offset(10, 10));
+      await pumpAndSettleSafe(tester);
+      await pumpReal(tester);
+      continue;
+    }
+    if (find.byType(SnackBar).evaluate().isNotEmpty) {
+      await tester.tapAt(const Offset(10, 10));
+      await pumpAndSettleSafe(tester);
+      await pumpReal(tester);
+      continue;
+    }
+    await pumpReal(tester, const Duration(milliseconds: 250));
+  }
+}
+
+/// Re-shows the auto-hiding bottom nav bar. Analytics/Insights/Wealth/Settings
+/// slide it off-screen (AnimatedSlide) after a scroll-down; this drags the
+/// content back up until [navIcon] is on-screen again.
+Future<void> revealBottomNav(WidgetTester tester, IconData navIcon) async {
+  final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+  const margin = 40.0;
+  final scoped = _navBarIcon(tester, navIcon);
+  for (var i = 0; i < 5; i++) {
+    await pumpReal(tester);
+    if (scoped.evaluate().isNotEmpty) {
+      try {
+        final rect = tester.getRect(scoped.first);
+        if (rect.center.dy <= size.height - margin) return;
+      } catch (_) {}
+    }
+    await tester.dragFrom(
+      Offset(size.width / 2, size.height / 2),
+      const Offset(0, 300),
+    );
+    await pumpAndSettleSafe(tester);
+  }
+}
+
+/// Taps a bottom-navigation tab (by its unique nav icon) and waits for a
+/// marker that only exists on the target tab. Retries the reveal + tap because
+/// the auto-hiding nav bar's AnimatedSlide can leave the icon mid-animation
+/// where a tap silently misses (warnIfMissed: false). Dismisses any modal that
+/// a just-built page pushed (the Wealth prompt fires whenever the Wealth page
+/// is first built, which also happens when jumping straight to Settings).
+/// The marker is only accepted when it renders on the page itself — never the
+/// always-visible bottom-nav label.
+Future<void> tapNavTab(WidgetTester tester, IconData icon, String marker) async {
+  final navIcon = _navBarIcon(tester, icon);
+  final markerFinder = find.text(marker);
+  for (var attempt = 0; attempt < 3; attempt++) {
+    await dismissDialogs(tester);
+    await revealBottomNav(tester, icon);
+    await tapWhenVisible(tester, navIcon);
+    await pumpAndSettleSafe(tester);
+    await pumpReal(tester);
+    if (await waitForCheck(tester, markerFinder, seconds: 12) &&
+        _markerOnPage(tester, markerFinder)) {
+      await dismissDialogs(tester);
+      await pumpReal(tester);
+      return;
+    }
+  }
+  fail('Timed out waiting for "$marker" after tapping nav tab $icon');
+}
+
+/// Pops pushed routes until the home screen is visible. Handles the standard
+/// back arrows, BackButton, and the SubscriptionScreen close button.
+Future<void> backToHome(WidgetTester tester, {int maxBacks = 8}) async {
+  for (var i = 0; i < maxBacks; i++) {
+    await pumpReal(tester);
+    if (_isHomeVisible(tester)) return;
+    Finder back = find.byType(BackButton);
+    if (back.evaluate().isEmpty) {
+      back = find.byIcon(Icons.arrow_back_ios_new_rounded);
+    }
+    if (back.evaluate().isEmpty) {
+      back = find.byIcon(Icons.arrow_back_ios_new);
+    }
+    if (back.evaluate().isEmpty) {
+      back = find.byIcon(Icons.arrow_back);
+    }
+    if (back.evaluate().isEmpty) {
+      back = find.byIcon(Icons.close);
+    }
+    if (back.evaluate().isEmpty) {
+      await pumpReal(tester, const Duration(seconds: 2));
+      continue;
+    }
+    await tester.tap(back.first, warnIfMissed: false);
+    await pumpAndSettleSafe(tester);
+  }
+  fail('Could not return to the home screen');
+}
+
+/// Pops a single pushed route (any common back button). No-op if none found.
+Future<void> popScreen(WidgetTester tester) async {
+  await pumpReal(tester);
+  Finder back = find.byType(BackButton);
+  if (back.evaluate().isEmpty) {
+    back = find.byIcon(Icons.arrow_back_ios_new_rounded);
+  }
+  if (back.evaluate().isEmpty) {
+    back = find.byIcon(Icons.arrow_back_ios_new);
+  }
+  if (back.evaluate().isEmpty) {
+    back = find.byIcon(Icons.arrow_back);
+  }
+  if (back.evaluate().isEmpty) {
+    back = find.byIcon(Icons.close);
+  }
+  if (back.evaluate().isEmpty) {
+    await pumpReal(tester, const Duration(seconds: 2));
+    return;
+  }
+  await tester.tap(back.first, warnIfMissed: false);
+  await pumpAndSettleSafe(tester);
+}
+
+/// Pulls to refresh the current screen's RefreshIndicator.
+Future<void> dragToRefresh(WidgetTester tester) async {
+  final ri = find.byType(RefreshIndicator);
+  if (ri.evaluate().isNotEmpty) {
+    await tester.drag(ri.first, const Offset(0, 300), warnIfMissed: false);
+    await pumpReal(tester, const Duration(seconds: 3));
+  }
+}
+
+/// Swipes a slidable list item left (or right) to reveal its action buttons
+/// and taps the action with [actionLabel].
+Future<void> swipeAndTap(
+  WidgetTester tester,
+  String itemText,
+  String actionLabel, {
+  bool swipeLeft = true,
+}) async {
+  final item = find.text(itemText).first;
+  await scrollUntilVisible(tester, item);
+  await pumpReal(tester);
+  await tester.drag(
+    item,
+    Offset(swipeLeft ? -300 : 300, 0),
+    warnIfMissed: false,
+  );
+  await pumpAndSettleSafe(tester);
+  await tapWhenVisible(tester, find.text(actionLabel));
+  await pumpAndSettleSafe(tester);
+}
+
+/// Swipes a list item to reveal its Delete action and confirms the resulting
+/// "Delete" confirmation dialog.
+Future<void> swipeAndConfirmDelete(
+  WidgetTester tester,
+  String itemText,
+) async {
+  await swipeAndTap(tester, itemText, 'Delete');
+  await pumpAndSettleSafe(tester);
+  final dlg = find.byType(AlertDialog);
+  if (dlg.evaluate().isNotEmpty) {
+    final del = find.descendant(
+      of: dlg,
+      matching: find.widgetWithText(TextButton, 'Delete'),
+    );
+    if (del.evaluate().isNotEmpty) {
+      await tapWhenVisible(tester, del);
+      await pumpAndSettleSafe(tester);
+    }
+  }
+  await pumpReal(tester, const Duration(seconds: 3));
+}
+
+/// Taps the delete-outline icon (entry cards / transaction details) and
+/// confirms any delete AlertDialog that appears.
+Future<void> deleteCurrentEntry(WidgetTester tester) async {
+  await tapWhenVisible(tester, find.byIcon(Icons.delete_outline));
+  await pumpAndSettleSafe(tester);
+  final dlg = find.byType(AlertDialog);
+  if (dlg.evaluate().isNotEmpty) {
+    final del = find.descendant(
+      of: dlg,
+      matching: find.widgetWithText(TextButton, 'Delete'),
+    );
+    if (del.evaluate().isNotEmpty) {
+      await tapWhenVisible(tester, del);
+      await pumpAndSettleSafe(tester);
+    }
+  }
+  await pumpReal(tester, const Duration(seconds: 3));
+}
+
+/// Fills a labeled text field inside the currently-open add/edit bottom sheet.
+Future<void> fillAssetField(
+  WidgetTester tester,
+  String label,
+  String value,
+) async {
+  await scrollUntilVisible(tester, find.widgetWithText(TextField, label));
+  await pumpReal(tester);
+  await tester.enterText(find.widgetWithText(TextField, label), value);
+  await pumpReal(tester);
+}
+
+/// Fills an asset sheet's required fields, saves it, and waits for the sheet
+/// to close. [fieldValues] maps each sheet field label to its input.
+Future<void> createAssetEntry(
+  WidgetTester tester, {
+  required String sheetTitle,
+  required Map<String, String> fieldValues,
+}) async {
+  await waitFor(tester, find.text(sheetTitle));
+  for (final e in fieldValues.entries) {
+    await fillAssetField(tester, e.key, e.value);
+  }
+  FocusManager.instance.primaryFocus?.unfocus();
+  await pumpReal(tester);
+  await tapWhenVisible(tester, find.text('Save'));
+  await pumpAndSettleSafe(tester);
+  await pumpReal(tester, const Duration(seconds: 3));
+}

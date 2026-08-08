@@ -45,6 +45,11 @@ class ImportService {
   }) async {
     List<TransactionModel> transactions = [];
 
+    // Prime the SMS categorization caches once so the per-row
+    // suggestCategory() calls below are pure in-memory lookups.
+    await SmsService.loadCorrectionCache();
+    await SmsService.buildHistoryCache();
+
     // Skip header row (index 0)
     for (int i = 1; i < rawData.length; i++) {
       try {
@@ -155,21 +160,44 @@ class ImportService {
     return null;
   }
 
-  /// Batch save transactions to Firestore (chunked to respect 500-op limit)
+  /// Batch save transactions to Firestore (chunked to respect 500-op limit).
+  /// [userEmail] is the Firestore doc id (`users/{userEmail}/transactions`).
+  /// Rows that already exist (same date + merchant + amount) are skipped so
+  /// re-importing the same file does not create duplicates.
   static Future<void> saveTransactionsToFirestore(
     List<TransactionModel> transactions,
-    String userId,
+    String userEmail,
   ) async {
+    if (transactions.isEmpty) return;
     const chunkSize = 499;
     final collection = FirebaseFirestore.instance
         .collection('users')
-        .doc(userId)
+        .doc(userEmail)
         .collection('transactions');
 
-    for (int i = 0; i < transactions.length; i += chunkSize) {
-      final chunk = transactions.sublist(
+    final existing = <String>{};
+    try {
+      final snap = await collection.get();
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        existing.add(
+          _fingerprint(d['date'], d['recipientName'], d['amount']),
+        );
+      }
+    } catch (e) {
+      log("Import dedupe fetch failed, continuing without dedupe: $e");
+    }
+
+    final toSave = transactions
+        .where((tx) =>
+            !existing.contains(_fingerprint(tx.date, tx.recipientName, tx.amount)))
+        .toList();
+    if (toSave.isEmpty) return;
+
+    for (int i = 0; i < toSave.length; i += chunkSize) {
+      final chunk = toSave.sublist(
         i,
-        (i + chunkSize).clamp(0, transactions.length),
+        (i + chunkSize).clamp(0, toSave.length),
       );
       final batch = FirebaseFirestore.instance.batch();
       for (var tx in chunk) {
@@ -178,5 +206,21 @@ class ImportService {
       }
       await batch.commit();
     }
+  }
+
+  static String _fingerprint(dynamic date, dynamic merchant, dynamic amount) {
+    DateTime dt;
+    if (date is DateTime) {
+      dt = date;
+    } else if (date is Timestamp) {
+      dt = date.toDate();
+    } else {
+      dt = DateTime.now();
+    }
+    final day =
+        '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    final amt = amount is num ? amount.toDouble().toStringAsFixed(2) : '0.00';
+    final name = merchant?.toString().trim().toLowerCase() ?? '';
+    return '$day|$name|$amt';
   }
 }

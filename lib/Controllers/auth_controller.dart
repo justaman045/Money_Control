@@ -2,12 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart';
-import 'package:money_control/Screens/homescreen.dart';
+import 'package:flutter/material.dart';
+import 'package:money_control/main.dart';
+import 'package:money_control/Screens/main_shell.dart';
+import 'package:money_control/Screens/splashscreen.dart';
 
 import 'package:money_control/Services/error_handler.dart';
 import 'package:money_control/Services/referral_service.dart';
 import 'package:money_control/Services/sms_service.dart';
+import 'package:money_control/Services/recurring_service.dart';
+import 'package:money_control/Services/cache_service.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Controllers/profile_controller.dart';
 import 'package:money_control/Controllers/analytics_controller.dart';
@@ -17,6 +21,8 @@ import 'package:money_control/Controllers/loan_controller.dart';
 import 'package:money_control/Controllers/challenges_controller.dart';
 import 'package:money_control/Controllers/lent_money_controller.dart';
 import 'package:money_control/Controllers/recurring_payment_controller.dart';
+import 'package:money_control/Controllers/audit_controller.dart';
+import 'package:money_control/Controllers/subscription_controller.dart';
 
 class AuthController extends GetxController {
   static AuthController get to => Get.find();
@@ -29,6 +35,7 @@ class AuthController extends GetxController {
   var errorMessage = ''.obs;
 
   Future<void> loginWithEmail(String email, String password) async {
+    if (isLoading.value) return;
     isLoading.value = true;
     errorMessage.value = '';
 
@@ -52,7 +59,7 @@ class AuthController extends GetxController {
 
       await _updateUserData(user, 'email');
 
-      Get.offAll(() => const BankingHomeScreen());
+      Get.offAll(() => const MainShell());
     } on FirebaseAuthException catch (e) {
       errorMessage.value = _getFriendlyErrorMessage(e);
     } catch (e) {
@@ -63,6 +70,7 @@ class AuthController extends GetxController {
   }
 
   Future<void> loginWithGoogle() async {
+    if (isLoading.value) return;
     isLoading.value = true;
     errorMessage.value = '';
 
@@ -88,7 +96,7 @@ class AuthController extends GetxController {
 
       if (user != null) {
         await _updateUserData(user, 'google');
-        Get.offAll(() => const BankingHomeScreen());
+        Get.offAll(() => const MainShell());
       }
     } on FirebaseAuthException catch (e) {
       errorMessage.value = _getFriendlyErrorMessage(e);
@@ -122,16 +130,59 @@ class AuthController extends GetxController {
     } catch (e) {
       debugPrint('Google signOut error: $e');
     }
-    if (Get.isRegistered<TransactionController>()) Get.delete<TransactionController>(force: true);
-    if (Get.isRegistered<ProfileController>()) Get.delete<ProfileController>(force: true);
-    if (Get.isRegistered<AnalyticsController>()) Get.delete<AnalyticsController>(force: true);
-    if (Get.isRegistered<BudgetController>()) Get.delete<BudgetController>(force: true);
-    if (Get.isRegistered<GoalsController>()) Get.delete<GoalsController>(force: true);
-    if (Get.isRegistered<LoanController>()) Get.delete<LoanController>(force: true);
-    if (Get.isRegistered<ChallengesController>()) Get.delete<ChallengesController>(force: true);
-    if (Get.isRegistered<LentMoneyController>()) Get.delete<LentMoneyController>(force: true);
-    if (Get.isRegistered<RecurringPaymentController>()) Get.delete<RecurringPaymentController>(force: true);
+    _disposeUserScopedState();
+    // Reset theme to system so the next user does not inherit the previous
+    // user's preference; resubscribe() also cancels the old user's listener.
+    if (Get.isRegistered<ThemeController>()) {
+      final theme = Get.find<ThemeController>();
+      theme.resubscribe();
+      theme.currentTheme.value = ThemeMode.system;
+      Get.changeThemeMode(ThemeMode.system);
+    }
+    // Re-arm the auth listener so the next login triggers a fresh
+    // subscription status check (cancels the old user's Firestore listener).
+    if (Get.isRegistered<SubscriptionController>()) {
+      SubscriptionController.to.checkSubscriptionStatus();
+    }
+    Get.offAll(() => const AnimatedSplashScreen());
+  }
+
+  /// Deletes all user-scoped controllers and clears user-scoped caches so a
+  /// later login can never reuse the previous account's in-memory state.
+  void _disposeUserScopedState() {
+    if (Get.isRegistered<TransactionController>()) {
+      Get.delete<TransactionController>(force: true);
+    }
+    if (Get.isRegistered<ProfileController>()) {
+      Get.delete<ProfileController>(force: true);
+    }
+    if (Get.isRegistered<AnalyticsController>()) {
+      Get.delete<AnalyticsController>(force: true);
+    }
+    if (Get.isRegistered<BudgetController>()) {
+      Get.delete<BudgetController>(force: true);
+    }
+    if (Get.isRegistered<GoalsController>()) {
+      Get.delete<GoalsController>(force: true);
+    }
+    if (Get.isRegistered<LoanController>()) {
+      Get.delete<LoanController>(force: true);
+    }
+    if (Get.isRegistered<ChallengesController>()) {
+      Get.delete<ChallengesController>(force: true);
+    }
+    if (Get.isRegistered<LentMoneyController>()) {
+      Get.delete<LentMoneyController>(force: true);
+    }
+    if (Get.isRegistered<RecurringPaymentController>()) {
+      Get.delete<RecurringPaymentController>(force: true);
+    }
+    if (Get.isRegistered<AuditController>()) {
+      Get.delete<AuditController>(force: true);
+    }
     SmsService.resetCache();
+    RecurringService.resetCache();
+    LocalCacheService.clearAll();
   }
 
   String _getFriendlyErrorMessage(FirebaseAuthException e) {

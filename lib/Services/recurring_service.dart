@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:money_control/Models/recurring_payment_model.dart';
@@ -74,6 +76,61 @@ class RecurringService {
 
   // Stream of subscriptions
   Stream<List<RecurringPayment>> getPayments() {
+    if (_paymentsController == null) {
+      final controller = StreamController<List<RecurringPayment>>.broadcast();
+      _paymentsController = controller;
+      _firestoreSub = _paymentsFromFirestore().listen(
+        (list) {
+          _lastPayments = list;
+          if (!controller.isClosed) controller.add(list);
+        },
+        onError: (e) {
+          if (!controller.isClosed) controller.addError(e);
+        },
+        onDone: () {
+          if (!controller.isClosed) controller.close();
+        },
+      );
+    }
+    return _replayOnSubscribe(_paymentsController!.stream);
+  }
+
+  // A plain broadcast stream only forwards events emitted AFTER subscription,
+  // so a StreamBuilder that attaches once data is already flowing would sit on
+  // ConnectionState.waiting until the next Firestore change. Replay the latest
+  // known value to every new subscriber so late-comers render immediately.
+  Stream<List<RecurringPayment>> _replayOnSubscribe(
+    Stream<List<RecurringPayment>> source,
+  ) {
+    late final StreamController<List<RecurringPayment>> controller;
+    StreamSubscription<List<RecurringPayment>>? sub;
+    controller = StreamController<List<RecurringPayment>>.broadcast(
+      onListen: () {
+        final last = _lastPayments;
+        if (last != null) controller.add(last);
+        sub = source.listen(
+          (list) {
+            if (!controller.isClosed) controller.add(list);
+          },
+          onError: (e) {
+            if (!controller.isClosed) controller.addError(e);
+          },
+          onDone: () {
+            if (!controller.isClosed) controller.close();
+          },
+        );
+      },
+      onCancel: () async {
+        await sub?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  // Single shared Firestore listener. Multiple callers (the recurring screen's
+  // getMonthlyTotal() and the controller) reuse one snapshots() subscription
+  // instead of opening one per subscriber on low-end devices / poor networks.
+  Stream<List<RecurringPayment>> _paymentsFromFirestore() {
     final email = _userEmail;
     if (email == null) return Stream.value([]);
 
@@ -96,6 +153,28 @@ class RecurringService {
           return list;
         });
   }
+
+  /// Drop the shared stream so the next [getPayments] call opens a fresh
+  /// Firestore subscription (called on logout to avoid leaking the previous
+  /// user's listener).
+  static void resetCache() {
+    final s = _instance;
+    s._firestoreSub?.cancel();
+    s._firestoreSub = null;
+    s._lastPayments = null;
+    s._paymentsController?.close();
+    s._paymentsController = null;
+  }
+
+  /// Fan-out controller for the single shared Firestore listener — see
+  /// [getPayments].
+  StreamController<List<RecurringPayment>>? _paymentsController;
+
+  /// Underlying Firestore snapshots subscription backing [_paymentsController].
+  StreamSubscription<List<RecurringPayment>>? _firestoreSub;
+
+  /// Latest value, replayed to late subscribers by [_replayOnSubscribe].
+  List<RecurringPayment>? _lastPayments;
 
   // Calculate total monthly commitment
   // Calculate total monthly commitment (remaining to pay this month)
@@ -154,6 +233,20 @@ class RecurringService {
         .collection('recurring_payments')
         .doc(id)
         .update(updates);
+  }
+
+  // Toggle auto-pay for a single payment. Writes only the autoPay flag so
+  // processDuePayments stops (or starts) auto-deducting this bill.
+  Future<void> toggleAutoPay(String id, bool autoPay) async {
+    final email = _userEmail;
+    if (email == null) return;
+
+    await _db
+        .collection('users')
+        .doc(email)
+        .collection('recurring_payments')
+        .doc(id)
+        .update({'autoPay': autoPay});
   }
 
   // Link an existing transaction to this payment and advance the next due

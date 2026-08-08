@@ -6,6 +6,9 @@ on:
     paths-ignore:
       - "README.md"
       - "app_version.json"
+      # The version-bump commit itself only changes pubspec.yaml; ignoring it
+      # here prevents the workflow from re-triggering on its own CI: commit.
+      - "pubspec.yaml"
   pull_request:
     branches: [master]
   workflow_dispatch:
@@ -26,7 +29,7 @@ jobs:
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.5'
+          flutter-version: '3.44.8'
 
       - name: Install dependencies
         run: flutter pub get
@@ -38,11 +41,104 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
       - name: Run unit & widget tests
-        run: flutter test
+        run: |
+          mkdir -p build/report
+          flutter test --file-reporter json:build/report/unit.json
+
+      - name: Generate unit test report
+        if: always()
+        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --out=build/report/unit_report.html
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: build/report/unit_report.html
+          if-no-files-found: warn
+
+  # End-to-end tests against the live Firebase backend on an Android emulator.
+  # These mutate the shared test account (create transactions, recurring
+  # payments, etc.), so they run on master pushes / manual dispatch only —
+  # never on pull requests. They do NOT gate the build: the release ships based
+  # on the unit/widget suite alone, and this job runs in parallel with it. A
+  # failing E2E suite marks the run red but never blocks the release. A
+  # downloadable report (pass/fail, errors, screenshots) is generated and
+  # uploaded whether the suite passes or fails.
+  integration_test:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.8'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Add google-services.json from secret
+        run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run integration tests on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -e
+            mkdir -p build/report
+            flutter test integration_test -d emulator-5554 --no-uninstall --dart-define=TEST_EMAIL=${{ secrets.TEST_EMAIL }} --dart-define=TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} --file-reporter json:build/report/integration.json || FLUTTER_EXIT=$?
+            mkdir -p build/report/screenshots
+            adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read f; do
+              adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$f" > "build/report/screenshots/$f" 2>/dev/null || true
+            done
+            exit "${FLUTTER_EXIT:-0}"
+
+      - name: Download unit test report
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-test-report
+          path: build/report
+
+      - name: Generate combined test report
+        if: always()
+        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --integration=build/report/integration.json --screenshots=build/report/screenshots --out=build/report/report.html
+
+      - name: Upload integration test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: build/report/report.html
+          if-no-files-found: warn
 
   build:
     runs-on: ubuntu-latest
     needs: test
+    # Release-producing build only on master pushes (or manual dispatch). PRs
+    # must not bump versions, create releases, or deploy Pages — and their
+    # detached-HEAD checkout makes the CI commit step fail outright.
+    # Gated on the unit/widget test suite only; integration_test runs in
+    # parallel and its result does not block this release.
+    if: github.event_name != 'pull_request'
 
     steps:
       # ------------------------------------------------------------
@@ -57,7 +153,7 @@ jobs:
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.5'
+          flutter-version: '3.44.8'
 
       # ------------------------------------------------------------
       # AUTO VERSION BUMP: pubspec.yaml
@@ -205,6 +301,10 @@ jobs:
   build_web:
     runs-on: ubuntu-latest
     needs: test
+    # Pages deployment is master-push/manual only — never from pull requests.
+    # Gated on the unit/widget test suite only; integration_test runs in
+    # parallel and its result does not block this deploy.
+    if: github.event_name != 'pull_request'
 
     steps:
       - name: Checkout repository
@@ -213,7 +313,7 @@ jobs:
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.5'
+          flutter-version: '3.44.8'
 
       - name: Install dependencies
         run: flutter pub get

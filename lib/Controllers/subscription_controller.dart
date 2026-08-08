@@ -307,29 +307,35 @@ class SubscriptionController extends GetxController {
     if (email == null) return;
     try {
       // Client-side rate limit: block requests within 60 seconds of previous
-      final doc = await _firestore.collection('users').doc(email).get();
+      final doc = await _firestore
+          .collection('users')
+          .doc(email)
+          .get()
+          .timeout(const Duration(seconds: 30));
       if (doc.exists) {
         final lastReq = doc.data()?['lastUpgradeRequest'] as Timestamp?;
         if (lastReq != null) {
           final secondsSince = DateTime.now().difference(lastReq.toDate()).inSeconds;
           if (secondsSince < 60) {
-            Get.snackbar(
-              'Too Many Requests',
+            ErrorHandler.showInfo(
               'Please wait a moment before trying again.',
-              backgroundColor: Colors.orangeAccent,
-              colorText: Colors.white,
+              title: 'Too Many Requests',
             );
             return;
           }
         }
       }
 
-      await _firestore.collection('users').doc(email).set({
-        'subscriptionStatus': 'pending',
-        'lastUpgradeRequest': FieldValue.serverTimestamp(),
-        'transactionId': transactionId,
-        'requestedPlan': plan,
-      }, SetOptions(merge: true));
+      await _firestore
+          .collection('users')
+          .doc(email)
+          .set({
+            'subscriptionStatus': 'pending',
+            'lastUpgradeRequest': FieldValue.serverTimestamp(),
+            'transactionId': transactionId,
+            'requestedPlan': plan,
+          }, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 30));
     } catch (e) {
       debugPrint('requestUpgrade error: $e');
       ErrorHandler.showError("Failed to request upgrade. Please try again.");

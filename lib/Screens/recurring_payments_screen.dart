@@ -1,18 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:money_control/Models/cateogary.dart';
 import 'package:money_control/Models/recurring_payment_model.dart';
+import 'package:money_control/Components/colors.dart';
+import 'package:money_control/Services/connectivity_controller.dart';
 import 'package:money_control/Services/recurring_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:money_control/Utils/animation.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Screens/subscription_details.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:money_control/Components/adaptive_panel.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class RecurringPaymentsScreen extends StatefulWidget {
   const RecurringPaymentsScreen({super.key});
@@ -26,6 +32,8 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
   final RecurringService _service = RecurringService();
   late final TransactionController _txController;
   RecurringPayment? _selectedPayment;
+  Timer? _loadTimer;
+  bool _loadTimedOut = false;
 
   @override
   void initState() {
@@ -34,6 +42,19 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
       Get.put(TransactionController());
     }
     _txController = Get.find<TransactionController>();
+    // Never let the list spinner run indefinitely: if the Firestore stream is
+    // still waiting after a few seconds (no network, no cached data) fall back
+    // to an offline note. The StreamBuilder repopulates on its own once the
+    // stream emits.
+    _loadTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _loadTimedOut = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _loadTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -124,72 +145,20 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                 padding: EdgeInsets.zero,
                 children: [
                   // Monthly Summary Card
-                  StreamBuilder<double>(
-                    stream: _service.getMonthlyTotal(),
-                    builder: (context, snapshot) {
-                      final total = snapshot.data ?? 0;
-                      return Container(
-                        width: double.infinity,
-                        margin: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 10.h),
-                        padding: EdgeInsets.all(24.w),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? const Color(0xFF1E1E2C).withValues(alpha: 0.6)
-                              : Colors.white,
-                          borderRadius: BorderRadius.circular(24.r),
-                          border: Border.all(
-                            color: isDark
-                                ? Colors.white.withValues(alpha: 0.1)
-                                : Colors.white,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(
-                                0xFF6C63FF,
-                              ).withValues(alpha: 0.15),
-                              blurRadius: 20.w,
-                              offset: Offset(0.w, 10.w),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              "Monthly Commitment",
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                                color: textColor.withValues(alpha: 0.6),
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            SizedBox(height: 12.h),
-                            TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0, end: total),
-                              duration: const Duration(milliseconds: 1500),
-                              curve: Curves.easeOutExpo,
-                              builder: (context, value, child) {
-                                return Text(
-                                  "${CurrencyController.to.currencySymbol.value}${value.toStringAsFixed(0)}",
-                                  style: TextStyle(
-                                    fontSize: 36.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: textColor,
-                                    letterSpacing: -1.0,
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ).animate().fadeIn().slideY(begin: -0.2, end: 0);
-                    },
+                  _MonthlyCommitmentCard(
+                    isDark: isDark,
+                    textColor: textColor,
                   ),
 
                   StreamBuilder<List<RecurringPayment>>(
                     stream: _service.getPayments(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
+                      final offline =
+                          Get.isRegistered<ConnectivityController>() &&
+                          !ConnectivityController.to.isOnline.value;
+                      final waiting =
+                          snapshot.connectionState == ConnectionState.waiting;
+                      if (waiting && !_loadTimedOut && !offline) {
                         return SizedBox(
                           height: 400.h,
                           child: const Center(child: CircularProgressIndicator()),
@@ -199,6 +168,32 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                         return SizedBox(
                           height: 400.h,
                           child: Center(child: Text("Error: ${snapshot.error}")),
+                        );
+                      }
+                      if (!snapshot.hasData && waiting && (_loadTimedOut || offline)) {
+                        return SizedBox(
+                          height: 400.h,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.cloud_off_rounded,
+                                  size: 48,
+                                  color: textColor.withValues(alpha: 0.3),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  "Couldn't load subscriptions. Check your connection.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: textColor.withValues(alpha: 0.6),
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         );
                       }
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -212,7 +207,9 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                                       padding: EdgeInsets.all(30.w),
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: Colors.white.withValues(alpha: 0.05),
+                                        color: isDark
+                                            ? Colors.white.withValues(alpha: 0.05)
+                                            : AppColors.lightSurfaceCard,
                                         boxShadow: [
                                           BoxShadow(
                                             color: const Color(
@@ -270,20 +267,21 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                         separatorBuilder: (c, i) => SizedBox(height: 16.h),
                         itemBuilder: (context, index) {
                           final item = list[index];
-                          return GestureDetector(
-                                onTap: () {
-                                  final isSplit = Responsive.isTablet(context) && Responsive.isLandscape(context);
-                                  if (isSplit) {
-                                    setState(() => _selectedPayment = item);
-                                  } else {
-                                    Get.to(() => SubscriptionDetailsScreen(payment: item));
-                                  }
-                                },
-                                child: _buildCard(item, isDark, textColor, context),
-                              )
-                              .animate(delay: (index * 100).ms)
-                              .fadeIn(duration: 400.ms)
-                              .slideX(begin: 0.1, end: 0, curve: Curves.easeOut);
+                          return animatedItem(
+                                GestureDetector(
+                                  onTap: () {
+                                    final isSplit = Responsive.isTablet(context) && Responsive.isLandscape(context);
+                                    if (isSplit) {
+                                      setState(() => _selectedPayment = item);
+                                    } else {
+                                      Get.to(() => SubscriptionDetailsScreen(payment: item));
+                                    }
+                                  },
+                                  child: _buildCard(item, isDark, textColor, context),
+                                ),
+                                index,
+                                staggerMs: 100,
+                              );
                         },
                       );
                     },
@@ -705,7 +703,7 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
     if (_formKey.currentState!.validate()) {
       final amount = RecurringPayment.roundAmount(double.tryParse(_amountCtrl.text) ?? 0);
       if (amount <= 0) {
-        Get.snackbar("Invalid Amount", "Enter a valid amount greater than 0");
+        ErrorHandler.showError("Enter a valid amount greater than 0", title: "Invalid Amount");
         return;
       }
       setState(() => _saving = true);
@@ -719,7 +717,7 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
         frequency: _freq,
         startDate: widget.payment?.startDate ?? DateTime.now(),
         nextDueDate: _nextPaymentDate,
-        isActive: true,
+        isActive: widget.payment?.isActive ?? true,
         autoPay: _autoPay,
       );
       try {
@@ -729,7 +727,7 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
       } catch (e) {
         if (mounted) {
           setState(() => _saving = false);
-          Get.snackbar("Error", "Failed to save. Please try again.");
+          ErrorHandler.showError("Failed to save. Please try again.");
         }
       }
     }
@@ -905,6 +903,95 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Monthly Commitment summary card. Kept alive across scroll so the
+// TweenAnimationBuilder count-up (and flutter_animate entrance) runs once on
+// first load instead of restarting from 0 every time the card re-enters the
+// viewport — the ListView otherwise destroys and recreates its State.
+class _MonthlyCommitmentCard extends StatefulWidget {
+  const _MonthlyCommitmentCard({
+    required this.isDark,
+    required this.textColor,
+  });
+
+  final bool isDark;
+  final Color textColor;
+
+  @override
+  State<_MonthlyCommitmentCard> createState() => _MonthlyCommitmentCardState();
+}
+
+class _MonthlyCommitmentCardState extends State<_MonthlyCommitmentCard>
+    with AutomaticKeepAliveClientMixin {
+  final RecurringService _service = RecurringService();
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return StreamBuilder<double>(
+      stream: _service.getMonthlyTotal(),
+      builder: (context, snapshot) {
+        final total = snapshot.data ?? 0;
+        return Container(
+          width: double.infinity,
+          margin: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 10.h),
+          padding: EdgeInsets.all(24.w),
+          decoration: BoxDecoration(
+            color: widget.isDark
+                ? const Color(0xFF1E1E2C).withValues(alpha: 0.6)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(24.r),
+            border: Border.all(
+              color: widget.isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : AppColors.lightBorder,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF6C63FF).withValues(alpha: 0.15),
+                blurRadius: 20.w,
+                offset: Offset(0.w, 10.w),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Text(
+                "Monthly Commitment",
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: widget.textColor.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              SizedBox(height: 12.h),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: total),
+                duration: const Duration(milliseconds: 1500),
+                curve: Curves.easeOutExpo,
+                builder: (context, value, child) {
+                  return Text(
+                    "${CurrencyController.to.currencySymbol.value}${value.toStringAsFixed(0)}",
+                    style: TextStyle(
+                      fontSize: 36.sp,
+                      fontWeight: FontWeight.bold,
+                      color: widget.textColor,
+                      letterSpacing: -1.0,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ).animate().fadeIn().slideY(begin: -0.2, end: 0);
+      },
     );
   }
 }

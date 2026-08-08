@@ -36,11 +36,16 @@ import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Controllers/subscription_controller.dart';
 import 'package:money_control/Screens/subscription_screen.dart';
-import 'package:money_control/Screens/add_transaction_from_recipt.dart';
+import 'package:money_control/Screens/upi_payment_screen.dart';
+import 'package:money_control/Screens/qr_scan_screen.dart';
+import 'package:money_control/Utils/upi_qr.dart';
+import 'package:money_control/Services/error_handler.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:money_control/Utils/responsive.dart';
 
 class BankingHomeScreen extends StatefulWidget {
-  const BankingHomeScreen({super.key});
+  final bool showNavigation;
+  const BankingHomeScreen({super.key, this.showNavigation = true});
 
   @override
   State<BankingHomeScreen> createState() => _BankingHomeScreenState();
@@ -112,8 +117,9 @@ class _BankingHomeScreenState extends State<BankingHomeScreen> {
 
     return AdaptiveScaffold(
       currentIndex: 0,
-      isVisible: _isBottomBarVisible,
-      navBarKey: _keyNavBar,
+      isVisible: widget.showNavigation ? _isBottomBarVisible : null,
+      navBarKey: widget.showNavigation ? _keyNavBar : null,
+      showNavigation: widget.showNavigation,
       backgroundColor: Colors.transparent,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -169,13 +175,13 @@ class _BankingHomeScreenState extends State<BankingHomeScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Obx(() {
-                  final userModel = _profileController.userProfile.value;
-                  if (userModel == null) {
-                    return shimmerText(theme);
-                  }
-                  final displayName = FirebaseAuth.instance.currentUser?.displayName;
-                  return Text(
+                  Obx(() {
+                    final userModel = _profileController.userProfile.value;
+                    if (userModel == null) {
+                      return shimmerText(theme);
+                    }
+                    final displayName = FirebaseAuth.instance.currentUser?.displayName;
+                    return Text(
                     (userModel.firstName != null && userModel.firstName!.isNotEmpty)
                         ? userModel.firstName!
                         : (displayName != null && displayName.isNotEmpty
@@ -370,20 +376,85 @@ class _BankingHomeScreenState extends State<BankingHomeScreen> {
     ),
         floatingActionButton: FloatingActionButton(
           backgroundColor: AppColors.primary,
-          tooltip: 'Scan Receipt',
+          tooltip: 'Scan QR to Pay',
           onPressed: () {
             HapticFeedback.lightImpact();
-            if (!Get.isRegistered<SubscriptionController>() || !Get.find<SubscriptionController>().isPro) {
+            if (!Get.isRegistered<SubscriptionController>() ||
+                !Get.find<SubscriptionController>().isPro) {
               gotoPage(const SubscriptionScreen());
               return;
             }
-            Get.to(() => const ReceiptScanPage(), transition: Transition.downToUp);
+            _openQrPay();
           },
-          child: const Icon(Icons.document_scanner_outlined, color: Colors.white),
+          child: const Icon(Icons.qr_code_scanner, color: Colors.white),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         extendBody: true,
     );
+  }
+
+  Future<void> _openQrPay() async {
+    if (kIsWeb) {
+      ErrorHandler.showError("QR scan & UPI pay is not available in browser.");
+      return;
+    }
+
+    var status = await Permission.camera.status;
+    if (!mounted) return;
+
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      await _showCameraSettingsDialog();
+      return;
+    }
+    if (!status.isGranted && !status.isLimited) {
+      status = await Permission.camera.request();
+      if (!mounted) return;
+    }
+    if (!status.isGranted && !status.isLimited) {
+      ErrorHandler.showError(
+        "Camera permission is required to scan a UPI QR code.",
+      );
+      return;
+    }
+
+    final data = await Get.to<UpiQrData>(() => const QrScanScreen());
+    if (data == null) return;
+
+    await Get.to(
+      () => UpiPaymentScreen(
+        initialVpa: data.isManual ? null : data.vpa,
+        initialName: data.name,
+        initialAmount: data.amount,
+        initialNote: data.note,
+      ),
+    );
+  }
+
+  Future<void> _showCameraSettingsDialog() async {
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Camera permission required"),
+        content: const Text(
+          "WealthSync needs camera access to scan UPI QR codes. "
+          "Open Settings to grant it.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx, rootNavigator: true).pop(false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(true),
+            child: const Text("Open Settings"),
+          ),
+        ],
+      ),
+    );
+    if (open == true && mounted) {
+      await openAppSettings();
+    }
   }
 
   Widget _buildActionButton({

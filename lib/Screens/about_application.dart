@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Components/colors.dart';
 
 class AboutApplicationScreen extends StatefulWidget {
   const AboutApplicationScreen({super.key});
@@ -244,7 +245,7 @@ class _AboutApplicationScreenState extends State<AboutApplicationScreen> {
             radius: 24.r,
             backgroundColor: isDark
                 ? Colors.white.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.05),
+                : AppColors.lightSurfaceCard,
             child: const Icon(Icons.code_rounded, color: Colors.teal),
           ),
           title: Text(

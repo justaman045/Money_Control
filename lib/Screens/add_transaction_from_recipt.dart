@@ -107,7 +107,7 @@ class _ReceiptScanPageState extends State<ReceiptScanPage> {
         senderId: user.uid, // assuming user is sender (expense)
         recipientId: '', // unknown recipient
         recipientName: 'Transaction Added from Receipt',
-        amount: amount,
+        amount: -amount.abs(),
         currency: CurrencyController.to.currencyCode.value,
         tax: 0,
         note: note,
@@ -120,7 +120,7 @@ class _ReceiptScanPageState extends State<ReceiptScanPage> {
       // Check Budget Limit
       final email = user.email;
       if (category.isNotEmpty && email != null) {
-        BudgetService.checkBudgetExceeded(
+        await BudgetService.checkBudgetExceeded(
           userId: email,
           category: category,
         );
@@ -389,7 +389,7 @@ class _ReceiptScanPageState extends State<ReceiptScanPage> {
       child: Container(
         height: 50.h,
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.07),
+          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightActionSurface,
           borderRadius: BorderRadius.circular(16.r),
           border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.1)),
         ),

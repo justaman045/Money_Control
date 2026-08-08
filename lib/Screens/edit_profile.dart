@@ -79,55 +79,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }, SetOptions(merge: true)); // keep existing fields
 
       if (mounted && !TutorialController.isTestMode) {
-        Get.snackbar(
-          "Success",
-          "Profile updated successfully",
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: (Get.isDarkMode ? AppColors.darkBackground : AppColors.lightBackground).withValues(alpha: 0.9),
-          colorText: Get.isDarkMode ? Colors.white : Colors.black,
-          margin: EdgeInsets.all(20.w),
-          borderRadius: 20.r,
-          borderColor: Colors.white.withValues(alpha: 0.1),
-          borderWidth: 1,
-          icon: Icon(
-            Icons.check_circle,
-            color: const Color(0xFF00E5FF),
-            size: 30.sp,
-          ),
-          duration: const Duration(seconds: 3),
-          forwardAnimationCurve: Curves.easeOutBack,
-          backgroundGradient: LinearGradient(
-            colors: Get.isDarkMode ? AppColors.darkGradient : AppColors.lightGradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadows: [
-            BoxShadow(
-              color: const Color(0xFF00E5FF).withValues(alpha: 0.2),
-              blurRadius: 20.w,
-              offset: Offset(0, 5.w),
-            ),
-          ],
-        );
+        ErrorHandler.showSuccess("Profile updated successfully");
       }
       if (mounted) setState(() => _isLoading = false);
+      await _profileController.refreshFromFirestore();
     } catch (e) {
       debugPrint("Error saving user data: $e");
       if (mounted) setState(() => _isLoading = false);
 
-      Get.snackbar(
-        "Error",
-        "Error saving profile: $e",
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.redAccent.withValues(alpha: 0.1),
-        colorText: Get.isDarkMode ? Colors.white : AppColors.lightTextPrimary,
-        margin: EdgeInsets.all(20.w),
-        borderRadius: 20.r,
-        borderColor: Colors.redAccent.withValues(alpha: 0.3),
-        borderWidth: 1,
-        icon: Icon(Icons.error_outline, color: Colors.redAccent, size: 30.sp),
-        duration: const Duration(seconds: 4),
-      );
+      ErrorHandler.showError("Error saving profile: $e");
     }
   }
 
@@ -222,9 +182,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                               child: CircleAvatar(
                                 radius: 50.r,
-                                backgroundColor: Colors.white.withValues(
-                                  alpha: 0.1,
-                                ),
+                                backgroundColor: isDark
+                                    ? Colors.white.withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.05),
                                 backgroundImage: url.isNotEmpty
                                     ? NetworkImage(url)
                                     : const AssetImage('assets/profile.png')
@@ -399,7 +359,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF00E5FF),
                           side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.3),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.3)
+                                : AppColors.lightBorder,
                             width: 1.5,
                           ),
                           shape: RoundedRectangleBorder(

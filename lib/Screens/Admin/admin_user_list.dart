@@ -41,14 +41,20 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             "Manage Users",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(
+              Icons.arrow_back,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -59,13 +65,26 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
               child: TextField(
                 controller: _searchController,
                 onChanged: (value) => setState(() => _searchQuery = value),
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(
+                  color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                ),
                 decoration: InputDecoration(
                   hintText: "Search by email...",
-                  hintStyle: TextStyle(color: Colors.white30),
-                  prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                  hintStyle: TextStyle(
+                    color: isDark
+                        ? Colors.white30
+                        : AppColors.lightTextTertiary,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: isDark
+                        ? Colors.white54
+                        : AppColors.lightTextTertiary,
+                  ),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.1),
+                  fillColor: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : AppColors.lightSurfaceCard,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16.r),
                     borderSide: BorderSide.none,
@@ -94,7 +113,11 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                     return Center(
                       child: Text(
                         "No users found.",
-                        style: TextStyle(color: Colors.white54),
+                        style: TextStyle(
+                          color: isDark
+                              ? Colors.white54
+                              : AppColors.lightTextSecondary,
+                        ),
                       ),
                     );
                   }
@@ -139,6 +162,7 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
   }
 
   Widget _buildUserCard(String email, bool isPro, Timestamp? expiry) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       child: GlassContainer(
@@ -151,12 +175,18 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
               decoration: BoxDecoration(
                 color: isPro
                     ? Colors.greenAccent.withValues(alpha: 0.1)
-                    : Colors.white.withValues(alpha: 0.1),
+                    : isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : AppColors.lightSurfaceCard,
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 isPro ? Icons.verified_user : Icons.person_outline,
-                color: isPro ? Colors.greenAccent : Colors.white54,
+                color: isPro
+                    ? Colors.greenAccent
+                    : isDark
+                        ? Colors.white54
+                        : AppColors.lightTextTertiary,
                 size: 24.sp,
               ),
             ),
@@ -168,7 +198,7 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                   Text(
                     email,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
                       fontSize: 16.sp,
                       fontWeight: FontWeight.bold,
                     ),
@@ -179,7 +209,11 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                         ? "Exp: ${expiry != null ? DateFormat('MMM dd, yyyy').format(expiry.toDate()) : 'Lifetime/Unknown'}"
                         : "Free Plan",
                     style: TextStyle(
-                      color: isPro ? Colors.greenAccent : Colors.white54,
+                      color: isPro
+                          ? Colors.greenAccent
+                          : isDark
+                              ? Colors.white54
+                              : AppColors.lightTextSecondary,
                       fontSize: 12.sp,
                     ),
                   ),
@@ -217,12 +251,20 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
               children: [
                 Text(
                   email,
-                  style: TextStyle(color: Colors.white70, fontSize: 14.sp),
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                    fontSize: 14.sp,
+                  ),
                 ),
                 SizedBox(height: 20.h),
                 Row(
                   children: [
-                    Text("Pro Status:", style: TextStyle(color: Colors.white)),
+                    Text(
+                      "Pro Status:",
+                      style: TextStyle(
+                        color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                      ),
+                    ),
                     const Spacer(),
                     Switch(
                       value: isPro,
@@ -237,7 +279,10 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                 if (isPro) ...[
                   Text(
                     "Expiry Date:",
-                    style: TextStyle(color: Colors.white70, fontSize: 14.sp),
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                      fontSize: 14.sp,
+                    ),
                   ),
                   SizedBox(height: 8.h),
                   InkWell(
@@ -272,7 +317,9 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                         horizontal: 16.w,
                       ),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white24),
+                        border: Border.all(
+                          color: isDark ? Colors.white24 : AppColors.lightBorder,
+                        ),
                         borderRadius: BorderRadius.circular(12.r),
                       ),
                       child: Row(
@@ -280,7 +327,11 @@ class _AdminUserListScreenState extends State<AdminUserListScreen> {
                         children: [
                           Text(
                             DateFormat('MMM dd, yyyy').format(selectedDate),
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.lightTextPrimary,
+                            ),
                           ),
                           Icon(
                             Icons.calendar_today,

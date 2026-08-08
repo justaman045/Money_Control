@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:get/get.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Services/import_service.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
@@ -79,11 +78,9 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Future<void> _importData() async {
     if (_dateColumn == null || _amountColumn == null) {
-      Get.snackbar(
-        "Missing Data",
+      ErrorHandler.showError(
         "Please map at least Date and Amount columns.",
-        backgroundColor: Colors.redAccent,
-        colorText: Colors.white,
+        title: "Missing Data",
       );
       return;
     }
@@ -104,6 +101,7 @@ class _ImportScreenState extends State<ImportScreen> {
       };
 
       final userId = FirebaseAuth.instance.currentUser?.uid;
+      final userEmail = FirebaseAuth.instance.currentUser?.email;
       if (userId == null) throw Exception("User not logged in");
 
       final transactions = await ImportService.processCSVData(
@@ -113,7 +111,7 @@ class _ImportScreenState extends State<ImportScreen> {
         currency: CurrencyController.to.currencyCode.value,
       );
 
-      await ImportService.saveTransactionsToFirestore(transactions, userId);
+      await ImportService.saveTransactionsToFirestore(transactions, userEmail!);
 
       // Success Feedback
       if (mounted) {
@@ -145,12 +143,7 @@ class _ImportScreenState extends State<ImportScreen> {
         );
       }
     } catch (e) {
-      Get.snackbar(
-        "Import Failed",
-        e.toString(),
-        backgroundColor: Colors.redAccent,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showError(e.toString(), title: "Import Failed");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -308,7 +301,7 @@ class _ImportScreenState extends State<ImportScreen> {
         decoration: BoxDecoration(
           color: isHighlight
               ? const Color(0xFF00E5FF).withValues(alpha: 0.1)
-              : isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+              : isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
           borderRadius: BorderRadius.circular(20.r),
           border: Border.all(
             color: isHighlight
@@ -349,7 +342,7 @@ class _ImportScreenState extends State<ImportScreen> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+          color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
           borderRadius: BorderRadius.circular(12.r),
           border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.5)),
         ),

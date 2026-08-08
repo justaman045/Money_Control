@@ -14,6 +14,7 @@ import 'dart:async';
 import 'package:money_control/Services/error_handler.dart';
 import 'package:money_control/Services/background_worker.dart';
 import 'package:money_control/Services/widget_service.dart';
+import 'package:money_control/Services/wealth_service.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/subscription_controller.dart';
 import 'package:money_control/Screens/subscription_screen.dart';
@@ -104,6 +105,8 @@ class TransactionController extends GetxController {
     _categoriesWorker.dispose();
     _transactionsWorker.dispose();
     _balanceWorker.dispose();
+    _txRetryTimer?.cancel();
+    _catRetryTimer?.cancel();
     _txSub?.cancel();
     _catSub?.cancel();
     super.onClose();
@@ -129,9 +132,11 @@ class TransactionController extends GetxController {
 
   int _txRetryCount = 0;
   static const int _txMaxRetries = 5;
+  Timer? _txRetryTimer;
 
   void bindTransactions() {
     _txSub?.cancel();
+    _txRetryTimer?.cancel();
     _txSub = _repository.getTransactionsStream().listen(
       (txList) {
         transactions.value = txList;
@@ -146,17 +151,23 @@ class TransactionController extends GetxController {
         }
       },
       onDone: () {
-        final delay = kIsWeb ? 5 : 3;
-        Future.delayed(Duration(seconds: delay), bindTransactions);
+        debugPrint('TransactionController transactions stream closed; retrying');
+        _scheduleTxRetry();
       },
       onError: (e) {
         debugPrint('TransactionController stream error: $e');
-        if (_txRetryCount < _txMaxRetries) {
-          _txRetryCount++;
-          final delay = kIsWeb ? 3 : 1;
-          Future.delayed(Duration(seconds: delay), bindTransactions);
-        }
+        _scheduleTxRetry();
       },
+    );
+  }
+
+  void _scheduleTxRetry() {
+    _txRetryTimer?.cancel();
+    if (_txRetryCount >= _txMaxRetries) return;
+    _txRetryCount++;
+    _txRetryTimer = Timer(
+      Duration(seconds: kIsWeb ? 5 : 3),
+      bindTransactions,
     );
   }
 
@@ -164,6 +175,9 @@ class TransactionController extends GetxController {
     try {
       final sym = CurrencyController.to.currencySymbol.value;
       WidgetService.updateBalance(totalBalance, sym);
+      // Persist the authoritative balance so background workers and the
+      // widget can read it from the portfolio doc without a full scan.
+      WealthService.updateBalance(totalBalance);
     } catch (e) {
       debugPrint('TransactionController._updateHomeWidget error: $e');
     }
@@ -171,26 +185,34 @@ class TransactionController extends GetxController {
 
   int _catRetryCount = 0;
   static const int _catMaxRetries = 5;
+  Timer? _catRetryTimer;
 
   void bindCategories() {
     _catSub?.cancel();
+    _catRetryTimer?.cancel();
     _catSub = _repository.getCategoriesStream().listen(
       (catList) {
         categories.value = catList;
         _catRetryCount = 0;
       },
       onDone: () {
-        final delay = kIsWeb ? 5 : 3;
-        Future.delayed(Duration(seconds: delay), bindCategories);
+        debugPrint('TransactionController categories stream closed; retrying');
+        _scheduleCatRetry();
       },
       onError: (e) {
         debugPrint('TransactionController categories stream error: $e');
-        if (_catRetryCount < _catMaxRetries) {
-          _catRetryCount++;
-          final delay = kIsWeb ? 3 : 1;
-          Future.delayed(Duration(seconds: delay), bindCategories);
-        }
+        _scheduleCatRetry();
       },
+    );
+  }
+
+  void _scheduleCatRetry() {
+    _catRetryTimer?.cancel();
+    if (_catRetryCount >= _catMaxRetries) return;
+    _catRetryCount++;
+    _catRetryTimer = Timer(
+      Duration(seconds: kIsWeb ? 5 : 3),
+      bindCategories,
     );
   }
 
@@ -231,24 +253,29 @@ class TransactionController extends GetxController {
   //  Actions
   // ——————————————————————————————————————
 
+  bool _addingCategory = false;
+
   Future<bool> addCategory(String name) async {
-    // 1. Check PRO Limit (Categories)
-    if (!_subscriptionController.isPro && categories.length >= 10) {
-      Get.to(() => const SubscriptionScreen());
-      return false;
-    }
-
-    if (name.isEmpty) {
-      ErrorHandler.showError("Category name cannot be empty");
-      return false;
-    }
-
-    if (categories.any((c) => c.name.toLowerCase() == name.toLowerCase())) {
-      ErrorHandler.showError("Category already exists");
-      return false;
-    }
-
+    // Guard against double-taps creating duplicate categories.
+    if (_addingCategory) return false;
+    _addingCategory = true;
     try {
+      // 1. Check PRO Limit (Categories)
+      if (!_subscriptionController.isPro && categories.length >= 10) {
+        Get.to(() => const SubscriptionScreen());
+        return false;
+      }
+
+      if (name.isEmpty) {
+        ErrorHandler.showError("Category name cannot be empty");
+        return false;
+      }
+
+      if (categories.any((c) => c.name.toLowerCase() == name.toLowerCase())) {
+        ErrorHandler.showError("Category already exists");
+        return false;
+      }
+
       final doc = await _repository.addCategory(name);
       categories.add(CategoryModel(id: doc.id, name: name));
       sortedCategoryNames.add(name); // Ensure it appears in QuickSend
@@ -256,6 +283,8 @@ class TransactionController extends GetxController {
     } catch (e) {
       _handleFirestoreError(e, "Failed to add category");
       return false;
+    } finally {
+      _addingCategory = false;
     }
   }
 
@@ -265,14 +294,20 @@ class TransactionController extends GetxController {
 
   Future<void> migrateTransactions(String oldCategory, String newCategory) async {
     try {
-      final batch = FirebaseFirestore.instance.batch();
-      for (var tx in transactions) {
-        if (tx.category == oldCategory) {
-          final ref = _repository.transactionRef(tx.id);
+      final refs = transactions
+          .where((tx) => tx.category == oldCategory)
+          .map((tx) => _repository.transactionRef(tx.id))
+          .toList();
+      // Firestore batches are capped at 500 writes — chunk large migrations.
+      const chunkSize = 499;
+      for (var i = 0; i < refs.length; i += chunkSize) {
+        final chunk = refs.skip(i).take(chunkSize);
+        final batch = FirebaseFirestore.instance.batch();
+        for (final ref in chunk) {
           batch.update(ref, {'category': newCategory});
         }
+        await batch.commit();
       }
-      await batch.commit();
     } catch (e) {
       _handleFirestoreError(e, "Failed to migrate transactions");
     }
@@ -404,7 +439,7 @@ class TransactionController extends GetxController {
 
     // 5. Budget Check (Side Effect)
     if (isSend) {
-      BudgetService.checkBudgetExceeded(
+      await BudgetService.checkBudgetExceeded(
         userId: email,
         category: category,
       );

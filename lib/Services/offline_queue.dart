@@ -80,11 +80,21 @@ class OfflineQueueService {
     return raw.map((k, v) => MapEntry(k, _sanitizeValue(v)));
   }
 
+  static List<dynamic> _safeDecodeList(String? raw) {
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is List ? decoded : <dynamic>[];
+    } catch (e) {
+      debugPrint('Offline queue JSON decode error: $e');
+      return [];
+    }
+  }
+
   static Future<void> savePending(Map<String, dynamic> tx) {
     return _enqueue(() async {
       final raw = await _readData();
-      final rawList = raw != null ? jsonDecode(raw) : null;
-      final list = rawList is List ? rawList : <dynamic>[];
+      final list = _safeDecodeList(raw);
       list.add(_sanitize(tx));
       await _writeData(jsonEncode(list));
     });
@@ -136,8 +146,7 @@ class OfflineQueueService {
     return _enqueue(() async {
       final raw = await _readData();
       if (raw == null) return;
-      final rawList = jsonDecode(raw);
-      final list = rawList is List ? rawList : <dynamic>[];
+      final list = _safeDecodeList(raw);
       if (list.isNotEmpty) list.removeAt(0);
       await _writeData(jsonEncode(list));
     });

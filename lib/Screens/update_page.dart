@@ -30,7 +30,7 @@ class _UpdatePageState extends State<UpdatePage> {
   Future<void> fetchLatestRelease() async {
     try {
       final url = Uri.parse(
-        "https://api.github.com/repos/justaman045/Money_Control/releases/latest",
+        "https://api.github.com/repos/justaman045/WealthSync/releases/latest",
       );
       final response = await http.get(url);
 
@@ -77,7 +77,7 @@ class _UpdatePageState extends State<UpdatePage> {
 
       // GitHub Compare: base...head
       final url = Uri.parse(
-        "https://api.github.com/repos/justaman045/Money_Control/compare/$localVersion...$remoteTag",
+        "https://api.github.com/repos/justaman045/WealthSync/compare/$localVersion...$remoteTag",
       );
 
       final response = await http.get(url);
@@ -108,14 +108,17 @@ class _UpdatePageState extends State<UpdatePage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "Update Available",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: const BackButton(color: Colors.white),
+        leading: BackButton(
+            color: isDark ? Colors.white : AppColors.lightTextPrimary),
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -139,6 +142,7 @@ class _UpdatePageState extends State<UpdatePage> {
   }
 
   Widget _content() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final tag = releaseData?["tag_name"] ?? "Unknown";
     final body = releaseData?["body"] ?? "";
     final publishedRaw = releaseData?["published_at"] ?? "";
@@ -149,7 +153,7 @@ class _UpdatePageState extends State<UpdatePage> {
     final assets = releaseData?["assets"] as List<dynamic>? ?? [];
     final String downloadUrl = () {
       if (tag != "Unknown") {
-        return "https://github.com/justaman045/Money_Control/releases/download/$tag/app-release.apk";
+        return "https://github.com/justaman045/WealthSync/releases/download/$tag/app-release.apk";
       }
       // Secondary: scan assets, explicitly skipping .aab files
       final apkAsset = assets.firstWhere(
@@ -160,12 +164,12 @@ class _UpdatePageState extends State<UpdatePage> {
         orElse: () => <String, dynamic>{},
       );
       return apkAsset?["browser_download_url"] as String? ??
-          "https://github.com/justaman045/Money_Control/releases";
+          "https://github.com/justaman045/WealthSync/releases";
     }();
 
     final fullReleaseUrl =
         releaseData?["html_url"] ??
-        "https://github.com/justaman045/Money_Control/releases";
+        "https://github.com/justaman045/WealthSync/releases";
 
     final features = _parseChangelog(body);
 
@@ -185,9 +189,14 @@ class _UpdatePageState extends State<UpdatePage> {
           Container(
             padding: EdgeInsets.all(24.w),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : AppColors.lightSurfaceCard,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : AppColors.lightBorder),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.2),
@@ -216,7 +225,7 @@ class _UpdatePageState extends State<UpdatePage> {
                   style: TextStyle(
                     fontSize: 22.sp,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -226,7 +235,9 @@ class _UpdatePageState extends State<UpdatePage> {
                       ? "Released on ${publishedDate.toLocal().toString().split(' ')[0]}"
                       : "New Release",
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : AppColors.lightTextSecondary,
                     fontSize: 14.sp,
                   ),
                 ),
@@ -244,7 +255,7 @@ class _UpdatePageState extends State<UpdatePage> {
             style: TextStyle(
               fontSize: 18.sp,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
               letterSpacing: 0.5,
             ),
           ),
@@ -253,9 +264,14 @@ class _UpdatePageState extends State<UpdatePage> {
           Container(
             padding: EdgeInsets.symmetric(vertical: 12.h),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.03)
+                  : AppColors.lightSurfaceCard,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+              border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.05)
+                      : AppColors.lightBorder),
             ),
             child: Column(
               children: [
@@ -267,7 +283,9 @@ class _UpdatePageState extends State<UpdatePage> {
                     child: Text(
                       "Bug fixes and improvements.",
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.7)
+                            : AppColors.lightTextSecondary,
                       ),
                     ),
                   ),
@@ -278,18 +296,23 @@ class _UpdatePageState extends State<UpdatePage> {
                     feature,
                     Icons.check_circle_outline_rounded,
                     const Color(0xFF00E676),
+                    isDark,
                   );
                 }),
 
                 // GENERATED ANALYSIS (Separated)
                 if (intelligentSummary.isNotEmpty) ...[
                   if (features.isNotEmpty)
-                    Divider(color: Colors.white.withValues(alpha: 0.1)),
+                    Divider(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : AppColors.lightBorder),
                   ...intelligentSummary.map((item) {
                     return _buildFeatureRow(
                       item,
                       Icons.auto_awesome_rounded,
                       const Color(0xFF2979FF),
+                      isDark,
                     );
                   }),
                 ],
@@ -303,7 +326,9 @@ class _UpdatePageState extends State<UpdatePage> {
                         height: 20.h,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white54,
+                          color: isDark
+                              ? Colors.white54
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ),
@@ -354,7 +379,10 @@ class _UpdatePageState extends State<UpdatePage> {
                 Uri.parse(fullReleaseUrl),
                 mode: LaunchMode.externalApplication,
               ),
-              style: TextButton.styleFrom(foregroundColor: Colors.white70),
+              style: TextButton.styleFrom(
+                  foregroundColor: isDark
+                      ? Colors.white70
+                      : AppColors.lightTextSecondary),
               child: const Text("View Full Changelog on GitHub"),
             ),
           ),
@@ -367,6 +395,7 @@ class _UpdatePageState extends State<UpdatePage> {
   }
 
   Widget _errorContent() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -380,7 +409,9 @@ class _UpdatePageState extends State<UpdatePage> {
           Text(
             "Could not fetch release info.",
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.8)
+                  : AppColors.lightTextSecondary,
               fontSize: 16.sp,
             ),
           ),
@@ -433,7 +464,7 @@ class _UpdatePageState extends State<UpdatePage> {
     return cleaned;
   }
 
-  Widget _buildFeatureRow(String text, IconData icon, Color color) {
+  Widget _buildFeatureRow(String text, IconData icon, Color color, bool isDark) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
       child: Row(
@@ -448,7 +479,9 @@ class _UpdatePageState extends State<UpdatePage> {
             child: Text(
               text,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.9),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.9)
+                    : AppColors.lightTextPrimary,
                 fontSize: 14.5.sp,
                 height: 1.4,
               ),

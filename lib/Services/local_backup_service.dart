@@ -22,21 +22,27 @@ class LocalBackupService {
     final transactions = await readUserTransactionsBackup(email);
     if (transactions.isEmpty) return;
 
-    final batch = FirebaseFirestore.instance.batch();
     final col = FirebaseFirestore.instance
         .collection('users')
         .doc(email)
         .collection('transactions');
 
-    for (var data in transactions) {
-      if (data.containsKey('id')) {
-        final docRef = col.doc(data['id']);
-        final Map<String, dynamic> writeData = Map.from(data)..remove('id');
-        _restoreDates(writeData);
-        batch.set(docRef, writeData, SetOptions(merge: true));
+    // Firestore batches are capped at 500 writes — chunk large restores so a
+    // big backup does not fail wholesale.
+    const chunkSize = 499;
+    for (var i = 0; i < transactions.length; i += chunkSize) {
+      final chunk = transactions.skip(i).take(chunkSize);
+      final batch = FirebaseFirestore.instance.batch();
+      for (var data in chunk) {
+        if (data.containsKey('id')) {
+          final docRef = col.doc(data['id']);
+          final Map<String, dynamic> writeData = Map.from(data)..remove('id');
+          _restoreDates(writeData);
+          batch.set(docRef, writeData, SetOptions(merge: true));
+        }
       }
+      await batch.commit();
     }
-    await batch.commit();
   }
 
   static Future<void> backupUserTransactions(String userEmail) async {

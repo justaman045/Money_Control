@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:ui';
+import 'package:get/get.dart';
 import 'package:money_control/Components/colors.dart';
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:money_control/Utils/responsive.dart';
 
 class GlassContainer extends StatelessWidget {
@@ -12,28 +14,31 @@ class GlassContainer extends StatelessWidget {
     List<BoxShadow>? customShadow,
   }) {
     return BoxDecoration(
-      color: customColor ??
+      color:
+          customColor ??
           (isDark
               ? Colors.white.withValues(alpha: 0.05)
-              : AppColors.lightSurface),
+              : AppColors.lightGlassBg.withValues(alpha: 0.9)),
       borderRadius: BorderRadius.circular(borderRadius.r),
       border: Border.all(
         color: isDark
             ? Colors.white.withValues(alpha: 0.1)
             : AppColors.lightBorder,
       ),
-      boxShadow: customShadow ??
+      boxShadow:
+          customShadow ??
           [
             BoxShadow(
               color: isDark
                   ? Colors.black.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.05),
+                  : Colors.black.withValues(alpha: 0.08),
               blurRadius: 15.w,
               offset: Offset(0.w, 8.w),
             ),
           ],
     );
   }
+
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
@@ -57,43 +62,53 @@ class GlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Obx makes the blur/solid switch reactive: toggling lite mode in Settings
+    // immediately restores (or removes) the frosted look across the app.
+    return Obx(() => _build(context));
+  }
+
+  Widget _build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final rBorderRadius = borderRadius ?? BorderRadius.circular(20.r);
     final isTablet = Responsive.isTablet(context);
+    // Skip the blur on lite mode / tablets — solid surface is much cheaper to
+    // paint and looks identical at a glance.
+    final useBlur = !isTablet && !PerformanceController.to.liteMode.value;
+
+    final solid = Container(
+      width: width,
+      height: height,
+      margin: margin ?? EdgeInsets.zero,
+      padding: padding ?? EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.black.withValues(alpha: 0.3)
+            : AppColors.lightGlassBg.withValues(alpha: 0.92),
+        borderRadius: rBorderRadius,
+        border:
+            border ??
+            Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : AppColors.lightBorder.withValues(alpha: 0.6),
+              width: 1.5,
+            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 12.w,
+            spreadRadius: 1.w,
+          ),
+        ],
+      ),
+      child: child,
+    );
 
     final container = RepaintBoundary(
       child: ClipRRect(
         borderRadius: rBorderRadius,
-        child: isTablet
-            ? Container(
-                width: width,
-                height: height,
-                margin: margin ?? EdgeInsets.zero,
-                padding: padding ?? EdgeInsets.all(16.w),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.black.withValues(alpha: 0.3)
-                      : AppColors.lightSurface.withValues(alpha: 0.92),
-                  borderRadius: rBorderRadius,
-                  border:
-                      border ??
-                      Border.all(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : AppColors.lightBorder.withValues(alpha: 0.5),
-                        width: 1.5,
-                      ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 12.w,
-                      spreadRadius: 1.w,
-                    ),
-                  ],
-                ),
-                child: child,
-              )
-            : BackdropFilter(
+        child: useBlur
+            ? BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
                 child: Container(
                   width: width,
@@ -103,14 +118,14 @@ class GlassContainer extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isDark
                         ? Colors.black.withValues(alpha: 0.2)
-                        : AppColors.lightSurface.withValues(alpha: 0.85),
+                        : AppColors.lightGlassBg.withValues(alpha: 0.85),
                     borderRadius: rBorderRadius,
                     border:
                         border ??
                         Border.all(
                           color: isDark
                               ? Colors.white.withValues(alpha: 0.1)
-                              : AppColors.lightBorder.withValues(alpha: 0.5),
+                              : AppColors.lightBorder.withValues(alpha: 0.6),
                           width: 1.5,
                         ),
                     boxShadow: [
@@ -123,7 +138,8 @@ class GlassContainer extends StatelessWidget {
                   ),
                   child: child,
                 ),
-              ),
+              )
+            : solid,
       ),
     );
 

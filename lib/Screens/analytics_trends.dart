@@ -226,7 +226,7 @@ class _AnalyticsTrendsScreenState extends State<AnalyticsTrendsScreen> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+              color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
               borderRadius: BorderRadius.circular(16.r),
               border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.1)),
             ),
@@ -318,7 +318,7 @@ class _AnalyticsTrendsScreenState extends State<AnalyticsTrendsScreen> {
             child: Container(
               padding: EdgeInsets.fromLTRB(16.w, 32.h, 24.w, 16.h),
               decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04), // Dark Glass
+                color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard, // Dark Glass
                 borderRadius: BorderRadius.circular(24.r),
                 border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.1)),
                 boxShadow: [
@@ -369,7 +369,7 @@ class _AnalyticsTrendsScreenState extends State<AnalyticsTrendsScreen> {
                                 drawVerticalLine: false,
                                 horizontalInterval: maxY / 5,
                                 getDrawingHorizontalLine: (value) => FlLine(
-                                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+                                  color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
                                   strokeWidth: 1,
                                 ),
                               ),

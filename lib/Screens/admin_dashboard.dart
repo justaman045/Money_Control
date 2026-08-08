@@ -49,14 +49,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             "Admin Dashboard",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(
+              Icons.arrow_back,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -82,12 +88,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     Icon(
                       Icons.check_circle_outline,
                       size: 80.sp,
-                      color: Colors.white24,
+                      color: isDark ? Colors.white24 : AppColors.lightTextTertiary,
                     ),
                     SizedBox(height: 16.h),
                     Text(
                       "No Pending Requests",
-                      style: TextStyle(fontSize: 18.sp, color: Colors.white54),
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        color: isDark
+                            ? Colors.white54
+                            : AppColors.lightTextSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -138,7 +149,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                   Text(
                                     email,
                                     style: TextStyle(
-                                      color: Colors.white,
+                                      color: isDark
+                                          ? Colors.white
+                                          : AppColors.lightTextPrimary,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16.sp,
                                     ),
@@ -151,7 +164,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                           ).format(date.toDate())
                                         : "Unknown Date",
                                     style: TextStyle(
-                                      color: Colors.white54,
+                                      color: isDark
+                                          ? Colors.white54
+                                          : AppColors.lightTextSecondary,
                                       fontSize: 12.sp,
                                     ),
                                   ),
@@ -265,17 +280,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             Text(
               "Enter email to force expiry date to yesterday.",
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(
+                color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+              ),
             ),
             SizedBox(height: 16.h),
             TextField(
               controller: emailController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(
+                color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              ),
               decoration: InputDecoration(
                 hintText: "User Email",
-                hintStyle: TextStyle(color: Colors.white30),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.white30 : AppColors.lightTextTertiary,
+                ),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.1),
+                fillColor: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : AppColors.lightSurfaceCard,
               ),
             ),
           ],

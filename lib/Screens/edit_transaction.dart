@@ -309,7 +309,7 @@ class _TransactionEditScreenState extends State<TransactionEditScreen> {
       _saving = false;
 
       if (updated.category != null && email != null) {
-        BudgetService.checkBudgetExceeded(
+        await BudgetService.checkBudgetExceeded(
           userId: email,
           category: updated.category!,
         );
@@ -318,7 +318,11 @@ class _TransactionEditScreenState extends State<TransactionEditScreen> {
       ErrorHandler.showSuccess("Transaction Updated");
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      await OfflineQueueService.savePending(txMap);
+      await OfflineQueueService.savePending({
+        ...txMap,
+        'id': updated.id,
+        '_operation': 'update',
+      });
 
       _saving = false;
 

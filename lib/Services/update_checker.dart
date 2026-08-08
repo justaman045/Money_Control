@@ -6,12 +6,25 @@ import 'package:http/http.dart' as http;
 import 'package:money_control/Components/methods.dart';
 import 'package:money_control/Screens/update_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UpdateChecker {
+  /// Own prefs key for the in-app dialog. Deliberately NOT shared with the
+  /// background worker's `last_update_check_run` key — the background task runs
+  /// on a 15-minute schedule and would otherwise mark the day as checked,
+  /// silently suppressing the dialog on every app open.
+  static const lastDialogKey = 'last_update_dialog_shown';
+
   static Future<void> checkForUpdate() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final todayStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      if (prefs.getString(lastDialogKey) == todayStr) return;
+
       final url = Uri.parse(
-        "https://raw.githubusercontent.com/justaman045/Money_Control/master/app_version.json",
+        "https://raw.githubusercontent.com/justaman045/WealthSync/master/app_version.json",
       );
 
       final response = await http.get(url).timeout(const Duration(seconds: 10));
@@ -33,6 +46,8 @@ class UpdateChecker {
 
       final package = await PackageInfo.fromPlatform();
       final currentVersion = package.version;
+
+      await prefs.setString(lastDialogKey, todayStr);
 
       if (_isNewerVersion(latestVersion, currentVersion)) {
         _maybeShowUpdateDialog(latestVersion, updateMessage, isForce);
@@ -157,7 +172,7 @@ class UpdateChecker {
                     decoration: BoxDecoration(
                       color: Get.isDarkMode
                           ? Colors.white.withValues(alpha: 0.05)
-                          : Colors.black.withValues(alpha: 0.03),
+                          : AppColors.lightSurfaceCard,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(

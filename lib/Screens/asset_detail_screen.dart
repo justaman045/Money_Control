@@ -204,7 +204,9 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             if (docs.isEmpty) {
               if (!_syncedEmpty) {
                 _syncedEmpty = true;
-                WealthService.updateAsset(cfg.assetKey, 0);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) WealthService.updateAsset(cfg.assetKey, 0);
+                });
               }
               return _buildEmpty(isDark);
             }
@@ -405,14 +407,20 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(cfg.icon, size: 72.sp, color: Colors.white24),
+          Icon(cfg.icon,
+              size: 72.sp,
+              color: isDark ? Colors.white24 : AppColors.lightBorder),
           SizedBox(height: 16.h),
           Text(cfg.emptyMessage,
-              style: TextStyle(color: Colors.white54, fontSize: 16.sp),
+              style: TextStyle(
+                  color: isDark ? Colors.white54 : AppColors.lightTextSecondary,
+                  fontSize: 16.sp),
               textAlign: TextAlign.center),
           SizedBox(height: 8.h),
           Text("Tap + to add your first entry",
-              style: TextStyle(color: Colors.white38, fontSize: 13.sp)),
+              style: TextStyle(
+                  color: isDark ? Colors.white38 : AppColors.lightTextTertiary,
+                  fontSize: 13.sp)),
         ],
       ),
     );

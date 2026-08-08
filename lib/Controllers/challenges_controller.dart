@@ -38,6 +38,7 @@ class ChallengesController extends GetxController {
       }).toList();
       isLoading.value = false;
     }
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> _fetchFromFirestore() async {

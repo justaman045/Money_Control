@@ -14,9 +14,11 @@ import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Models/cateogary.dart';
 import 'package:money_control/Screens/add_transaction_from_recipt.dart';
+import 'package:money_control/Screens/upi_payment_screen.dart';
 import 'package:money_control/Utils/icon_helper.dart';
 import 'package:money_control/Controllers/tutorial_controller.dart';
 import 'package:money_control/Services/error_handler.dart';
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:money_control/Components/responsive_form_row.dart';
 
@@ -56,7 +58,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       Get.put(TransactionController());
     }
     _transactionController = Get.find<TransactionController>();
-    _confettiController = ConfettiController(duration: const Duration(milliseconds: 800));
+    _confettiController = ConfettiController(
+      duration: const Duration(milliseconds: 800),
+    );
     // Initialize selected category if passed from widget
     if (widget.cateogary != null) {
       selectedCategory = widget.cateogary;
@@ -67,7 +71,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (_transactionController.categories.isNotEmpty) {
         selectedCategory = _transactionController.categories.first.name;
       } else {
-        _categoryAutoSelectWorker = ever(_transactionController.categories, (cats) {
+        _categoryAutoSelectWorker = ever(_transactionController.categories, (
+          cats,
+        ) {
           if (cats.isNotEmpty && selectedCategory == null && mounted) {
             setState(() => selectedCategory = cats.first.name);
             _categoryAutoSelectWorker?.dispose();
@@ -194,7 +200,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       child: Text(
                         AppLocalizations.of(context)!.add,
                         style: TextStyle(
-                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                          color: isDark
+                              ? Colors.white
+                              : AppColors.lightTextPrimary,
                           fontWeight: FontWeight.bold,
                           fontSize: 16.sp,
                         ),
@@ -235,7 +243,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: Text(
               AppLocalizations.of(context)!.delete,
-              style: TextStyle(color: isDark ? Colors.white : AppColors.lightTextPrimary),
+              style: TextStyle(
+                color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              ),
             ),
           ),
         ],
@@ -258,9 +268,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> saveTransaction() async {
     if (selectedCategory == null) {
-      Get.snackbar(
-        AppLocalizations.of(context)!.error,
+      ErrorHandler.showError(
         AppLocalizations.of(context)!.selectCategoryError,
+        title: AppLocalizations.of(context)!.error,
       );
       return;
     }
@@ -310,109 +320,128 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return Stack(
       children: [
         Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(title, theme, isDark),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark ? AppColors.darkGradient : AppColors.lightGradient,
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ResponsiveFormRow(
-                      left: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel(AppLocalizations.of(context)!.amount, theme),
-                          _amountField(_amount, theme),
-                        ],
-                      ),
-                      right: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel(nameLabel, theme),
-                          _inputField(
-                            controller: _name,
-                            hint: AppLocalizations.of(context)!.enterNameHint,
-                            theme: theme,
+          extendBodyBehindAppBar: true,
+          appBar: _buildAppBar(title, theme, isDark),
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark
+                    ? AppColors.darkGradient
+                    : AppColors.lightGradient,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: Responsive.contentMaxWidth(context),
+                  ),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 20.w,
+                      vertical: 20.h,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ResponsiveFormRow(
+                          left: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldLabel(
+                                AppLocalizations.of(context)!.amount,
+                                theme,
+                              ),
+                              _amountField(_amount, theme),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    _fieldLabel(
-                      AppLocalizations.of(context)!.selectCategory,
-                      theme,
-                    ),
-                    _categorySelector(theme),
-                    ResponsiveFormRow(
-                      left: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel(AppLocalizations.of(context)!.note, theme),
-                          _inputField(
-                            controller: _note,
-                            hint: AppLocalizations.of(context)!.addNoteHint,
-                            maxLines: 2,
-                            theme: theme,
+                          right: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldLabel(nameLabel, theme),
+                              _inputField(
+                                controller: _name,
+                                hint: AppLocalizations.of(
+                                  context,
+                                )!.enterNameHint,
+                                theme: theme,
+                              ),
+                            ],
                           ),
+                        ),
+                        _fieldLabel(
+                          AppLocalizations.of(context)!.selectCategory,
+                          theme,
+                        ),
+                        _categorySelector(theme),                        ResponsiveFormRow(
+                          left: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldLabel(
+                                AppLocalizations.of(context)!.note,
+                                theme,
+                              ),
+                              _inputField(
+                                controller: _note,
+                                hint: AppLocalizations.of(context)!.addNoteHint,
+                                maxLines: 2,
+                                theme: theme,
+                              ),
+                            ],
+                          ),
+                          right: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _fieldLabel(
+                                AppLocalizations.of(context)!.date,
+                                theme,
+                              ),
+                              _dateSelector(theme),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 40.h),
+                        _submitButton(
+                          context: context,
+                          label: widget.type == PaymentType.send
+                              ? AppLocalizations.of(context)!.send
+                              : AppLocalizations.of(context)!.receive,
+                          onTap: saveTransaction,
+                        ),
+                        if (widget.type == PaymentType.send && !kIsWeb) ...[
+                          SizedBox(height: 12.h),
+                          _upiPayButton(context),
                         ],
-                      ),
-                      right: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _fieldLabel(AppLocalizations.of(context)!.date, theme),
-                          _dateSelector(theme),
-                        ],
-                      ),
+                        SizedBox(height: 20.h),
+                      ],
                     ),
-                    SizedBox(height: 40.h),
-                    _submitButton(
-                      context: context,
-                      label: widget.type == PaymentType.send
-                          ? AppLocalizations.of(context)!.send
-                          : AppLocalizations.of(context)!.receive,
-                      onTap: saveTransaction,
-                    ),
-                    if (widget.type == PaymentType.send && !kIsWeb) ...[
-                      SizedBox(height: 12.h),
-                      _upiPayButton(context),
-                    ],
-                    SizedBox(height: 20.h),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    ),
         Align(
           alignment: Alignment.topCenter,
-          child: ConfettiWidget(
-            confettiController: _confettiController,
-            blastDirectionality: BlastDirectionality.explosive,
-            shouldLoop: false,
-            numberOfParticles: 30,
-            maxBlastForce: 20,
-            minBlastForce: 8,
-            gravity: 0.3,
-            colors: const [
-              Color(0xFF00E5FF),
-              Color(0xFF69F0AE),
-              Color(0xFFFF4081),
-              Color(0xFFFFD740),
-            ],
-          ),
+          child: PerformanceController.to.liteMode.value
+              ? const SizedBox.shrink()
+              : ConfettiWidget(
+                  confettiController: _confettiController,
+                  blastDirectionality: BlastDirectionality.explosive,
+                  shouldLoop: false,
+                  numberOfParticles: 30,
+                  maxBlastForce: 20,
+                  minBlastForce: 8,
+                  gravity: 0.3,
+                  colors: const [
+                    Color(0xFF00E5FF),
+                    Color(0xFF69F0AE),
+                    Color(0xFFFF4081),
+                    Color(0xFFFFD740),
+                  ],
+                ),
         ),
       ],
     );
@@ -561,9 +590,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       final filteredCats = _categoryQuery.isEmpty
           ? categories
-          : categories.where(
-              (c) => c.name.toLowerCase().contains(_categoryQuery.toLowerCase()),
-            ).toList();
+          : categories
+                .where(
+                  (c) => c.name.toLowerCase().contains(
+                    _categoryQuery.toLowerCase(),
+                  ),
+                )
+                .toList();
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -576,79 +609,125 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 decoration: InputDecoration(
                   hintText: 'Search categories...',
                   hintStyle: TextStyle(
-                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.4),
+                    color: theme.textTheme.bodyMedium?.color?.withValues(
+                      alpha: 0.4,
+                    ),
                     fontSize: 14.sp,
                   ),
                   border: InputBorder.none,
-                  prefixIcon: Icon(Icons.search, size: 18.sp, color: theme.iconTheme.color),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: 18.sp,
+                    color: theme.iconTheme.color,
+                  ),
                   isDense: true,
                 ),
-                style: TextStyle(fontSize: 14.sp, color: theme.textTheme.bodyLarge?.color),
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: theme.textTheme.bodyLarge?.color,
+                ),
                 onChanged: (v) => setState(() => _categoryQuery = v),
               ),
             ),
             SizedBox(height: 10.h),
           ],
           SingleChildScrollView(
-        key: _keyCategory,
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            ...filteredCats.map((cat) {
-              final isSelected = selectedCategory == cat.name;
-              final catColor = cat.color != null
-                  ? Color(cat.color!)
-                  : AppColors.secondary;
-              final borderColor = isSelected
-                  ? catColor
-                  : theme.dividerColor.withValues(alpha: 0.3);
+            key: _keyCategory,
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ...filteredCats.map((cat) {
+                  final isSelected = selectedCategory == cat.name;
+                  final catColor = cat.color != null
+                      ? Color(cat.color!)
+                      : AppColors.secondary;
+                  final borderColor = isSelected
+                      ? catColor
+                      : theme.dividerColor.withValues(alpha: 0.3);
 
-              return Padding(
-                padding: EdgeInsets.only(right: 12.w),
-                child: GestureDetector(
-                  onTap: () => setState(() => selectedCategory = cat.name),
-                  onLongPress: () => _deleteCategory(cat),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
+                  return Padding(
+                    padding: EdgeInsets.only(right: 12.w),
+                    child: GestureDetector(
+                      onTap: () => setState(() => selectedCategory = cat.name),
+                      onLongPress: () => _deleteCategory(cat),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 12.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? catColor.withValues(alpha: 0.25)
+                              : theme.cardColor.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(24.r),
+                          border: Border.all(color: borderColor, width: 1.5),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: catColor.withValues(alpha: 0.3),
+                                    blurRadius: 12.w,
+                                    spreadRadius: -2.w,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Row(
+                          children: [
+                            if (cat.iconCode != null) ...[
+                              Icon(
+                                IconHelper.getIconFromCode(cat.iconCode),
+                                size: 18.sp,
+                                color: isSelected
+                                    ? catColor
+                                    : theme.textTheme.bodyMedium?.color,
+                              ),
+                              SizedBox(width: 8.w),
+                            ],
+                            Text(
+                              cat.name,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? theme.textTheme.bodyLarge?.color
+                                    : theme.textTheme.bodyMedium?.color,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15.sp,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+
+                // ADD BUTTON
+                GestureDetector(
+                  onTap: _addCategoryDialog,
+                  child: Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.h,
+                      horizontal: 20.w,
+                      vertical: 14.h,
                     ),
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? catColor.withValues(alpha: 0.25)
-                          : theme.cardColor.withValues(alpha: 0.5),
+                      color: theme.cardColor.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(24.r),
-                      border: Border.all(color: borderColor, width: 1.5),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: catColor.withValues(alpha: 0.3),
-                                blurRadius: 12.w,
-                                spreadRadius: -2.w,
-                              ),
-                            ]
-                          : null,
+                      border: Border.all(
+                        color: theme.dividerColor.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        if (cat.iconCode != null) ...[
-                          Icon(
-                            IconHelper.getIconFromCode(cat.iconCode),
-                            size: 18.sp,
-                            color: isSelected
-                                ? catColor
-                                : theme.textTheme.bodyMedium?.color,
-                          ),
-                          SizedBox(width: 8.w),
-                        ],
+                        Icon(
+                          Icons.add,
+                          color: theme.textTheme.bodyMedium?.color,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 6.w),
                         Text(
-                          cat.name,
+                          AppLocalizations.of(context)!.add,
                           style: TextStyle(
-                            color: isSelected
-                                ? theme.textTheme.bodyLarge?.color
-                                : theme.textTheme.bodyMedium?.color,
-                            fontWeight: FontWeight.w600,
+                            color: theme.textTheme.bodyMedium?.color,
                             fontSize: 15.sp,
                           ),
                         ),
@@ -656,43 +735,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                   ),
                 ),
-              );
-            }),
-
-            // ADD BUTTON
-            GestureDetector(
-              onTap: _addCategoryDialog,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 14.h),
-                decoration: BoxDecoration(
-                  color: theme.cardColor.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(24.r),
-                  border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.add,
-                      color: theme.textTheme.bodyMedium?.color,
-                      size: 20.sp,
-                    ),
-                    SizedBox(width: 6.w),
-                    Text(
-                      AppLocalizations.of(context)!.add,
-                      style: TextStyle(
-                        color: theme.textTheme.bodyMedium?.color,
-                        fontSize: 15.sp,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
         ],
       );
     });
@@ -729,7 +774,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _submitButton({required BuildContext context, required String label, required VoidCallback onTap}) {
+  Widget _submitButton({
+    required BuildContext context,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Obx(
       () => GestureDetector(
@@ -776,32 +825,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     letterSpacing: 1.5,
                   ),
                 ),
-        ),
-      ),
+              ),
+              ),
     );
   }
-
-  // Platform channel for UPI — uses startActivityForResult so we get the result back
-  static const _upiChannel = MethodChannel('money_control/upi');
-
-  static const _upiApps = [
-    (name: 'GPay',    pkg: 'com.google.android.apps.nbu.paisa.user', icon: 'G', color: Color(0xFF4285F4)),
-    (name: 'PhonePe', pkg: 'com.phonepe.app',                        icon: 'P', color: Color(0xFF5F259F)),
-    (name: 'Paytm',   pkg: 'net.one97.paytm',                        icon: 'P', color: Color(0xFF002970)),
-    (name: 'BHIM',    pkg: 'in.org.npci.upiapp',                     icon: 'B', color: Color(0xFF0033A0)),
-    (name: 'CRED',    pkg: 'com.dreamplug.androidapp',               icon: 'C', color: Color(0xFF1A1A2E)),
-    (name: 'Any UPI', pkg: null,                                      icon: 'U', color: AppColors.primary),
-  ];
 
   Widget _upiPayButton(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
-      onTap: () => _showUpiAppSelector(context),
+      onTap: () async {
+        final saved = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(builder: (_) => const UpiPaymentScreen()),
+        );
+        if (saved == true && mounted) {
+          Navigator.of(this.context).pop();
+        }
+      },
       child: Container(
         width: double.infinity,
         height: 50.h,
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.049),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.07)
+              : Colors.black.withValues(alpha: 0.049),
           borderRadius: BorderRadius.circular(27.r),
           border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
         ),
@@ -824,274 +871,4 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ),
     );
   }
-
-  Future<void> _showUpiAppSelector(BuildContext context) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final amount = double.tryParse(_amount.text.replaceAll(',', '')) ?? 0;
-    if (amount <= 0) {
-      ErrorHandler.showError("Enter amount before paying via UPI.");
-      return;
-    }
-    final sym      = CurrencyController.to.currencySymbol.value;
-    final name     = _name.text.trim();
-    final amountStr = amount.toStringAsFixed(2);
-
-    if (!context.mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      constraints: BoxConstraints(maxWidth: Responsive.sheetMaxWidth(context)),
-      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(24.w, 20.h, 24.w, 16.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Choose UPI App",
-                style: TextStyle(
-                  color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                  fontSize: 17.sp,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                name.isEmpty ? "$sym$amountStr" : "Pay $sym$amountStr to $name",
-                style: TextStyle(color: isDark ? Colors.white60 : AppColors.lightTextSecondary, fontSize: 13.sp),
-              ),
-              SizedBox(height: 16.h),
-              ..._upiApps.map((app) => Padding(
-                padding: EdgeInsets.only(bottom: 10.h),
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _initiateUpiPayment(appName: app.name, packageName: app.pkg);
-                  },
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.042),
-                      borderRadius: BorderRadius.circular(14.r),
-                      border: Border.all(
-                        color: isDark ? Colors.white.withValues(alpha: 0.08) : AppColors.lightBorder.withValues(alpha: 0.08),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 34.w,
-                          height: 34.w,
-                          decoration: BoxDecoration(
-                            color: app.color,
-                            borderRadius: BorderRadius.circular(8.r),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            app.icon,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13.sp,
-                            ),
-                          ),
-                        ),
-                        SizedBox(width: 14.w),
-                        Text(
-                          app.name,
-                          style: TextStyle(
-                            color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const Spacer(),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          color: isDark ? Colors.white24 : Colors.black.withValues(alpha: 0.2),
-                          size: 14.sp,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _initiateUpiPayment({
-    required String appName,
-    String? packageName,
-  }) async {
-    final amount    = double.tryParse(_amount.text.replaceAll(',', '')) ?? 0;
-    final payeeName = _name.text.trim().isEmpty ? 'Recipient' : _name.text.trim();
-    final note      = _note.text.trim().isEmpty ? 'Payment' : _note.text.trim();
-
-    try {
-      final response = await _upiChannel.invokeMethod<String>('pay', {
-        if (packageName != null) 'packageName': packageName,
-        'amount':    amount.toStringAsFixed(2),
-        'payeeName': payeeName,
-        'note':      note,
-      });
-      _handleUpiResponse(response ?? '', appName);
-    } on PlatformException catch (e) {
-      if (e.code == 'APP_NOT_FOUND' && packageName != null) {
-        // Specific app not installed — retry with Android system UPI chooser
-        await _initiateUpiPayment(appName: 'UPI', packageName: null);
-      } else {
-        ErrorHandler.showError(
-          'No UPI app found. Please install GPay, PhonePe or Paytm.',
-        );
-      }
-    }
-  }
-
-  void _handleUpiResponse(String response, String appName) {
-    if (response.isEmpty) return; // user pressed back — cancelled silently
-
-    // Response is a query-string: "Status=SUCCESS&txnId=XXX&txnRef=YYY&..."
-    final params = Map.fromEntries(
-      response.split('&').where((s) => s.contains('=')).map((kv) {
-        final i = kv.indexOf('=');
-        return MapEntry(kv.substring(0, i).toLowerCase(), kv.substring(i + 1));
-      }),
-    );
-
-    final status      = (params['status'] ?? '').toUpperCase();
-    final txnId       = params['txnid'] ?? params['txnref'] ?? '';
-    final approvalRef = params['approvalrefno'] ?? '';
-
-    if (status == 'SUCCESS' || status == 'SUBMITTED') {
-      _showUpiResultDialog(
-        appName: appName,
-        txnId: txnId,
-        approvalRef: approvalRef,
-        pending: status == 'SUBMITTED',
-      );
-    } else {
-      ErrorHandler.showError(
-        'Payment ${status.isEmpty ? "failed or cancelled" : status.toLowerCase()}.',
-      );
-    }
-  }
-
-  void _showUpiResultDialog({
-    required String appName,
-    required String txnId,
-    required String approvalRef,
-    bool pending = false,
-  }) {
-    if (!mounted) return;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              pending ? Icons.access_time_rounded : Icons.check_circle_rounded,
-              color: pending ? Colors.amber : Colors.greenAccent,
-              size: 52.sp,
-            ),
-            SizedBox(height: 12.h),
-            Text(
-              pending ? 'Payment Pending' : 'Payment Successful',
-              style: TextStyle(
-                color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                fontSize: 17.sp,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: 6.h),
-            Text(
-              'via $appName',
-              style: TextStyle(color: isDark ? Colors.white54 : AppColors.lightTextSecondary, fontSize: 12.sp),
-            ),
-            if (txnId.isNotEmpty) ...[
-              SizedBox(height: 16.h),
-              _resultRow(context, 'Transaction ID', txnId),
-            ],
-            if (approvalRef.isNotEmpty) ...[
-              SizedBox(height: 8.h),
-              _resultRow(context, 'Approval Ref', approvalRef),
-            ],
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.spaceEvenly,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Close',
-              style: TextStyle(color: isDark ? Colors.white54 : AppColors.lightTextSecondary, fontSize: 14.sp),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              // Pre-fill note with txnId so it's saved with the transaction
-              if (txnId.isNotEmpty) {
-                _note.text = 'UPI:$txnId';
-              }
-              saveTransaction();
-            },
-            child: Text(
-              'Save Transaction',
-              style: TextStyle(
-                color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _resultRow(BuildContext context, String label, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '$label: ',
-          style: TextStyle(color: isDark ? Colors.white54 : AppColors.lightTextSecondary, fontSize: 12.sp),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              color: isDark ? Colors.white : AppColors.lightTextPrimary,
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
-
-

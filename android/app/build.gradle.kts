@@ -4,6 +4,7 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -52,6 +53,11 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // R8 minify + resource shrink: the app only uses the Latin ML Kit
+            // model and Dart-side dead code is large; shrinking cuts APK size
+            // and startup JIT/AOT work on low-end devices.
+            isMinifyEnabled = true
+            isShrinkResources = true
         }
     }
 }
@@ -60,10 +66,8 @@ dependencies {
     // kotlin-stdlib-jdk7:1.8.0 removed — conflicts with Flutter's Kotlin version.
     // google-services:4.4.2 removed — it's a Gradle plugin (in plugins {}), not a runtime dep.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.0")
-    implementation("com.google.mlkit:text-recognition-devanagari:16.0.0")
-    implementation("com.google.mlkit:text-recognition-japanese:16.0.0")
-    implementation("com.google.mlkit:text-recognition-korean:16.0.0")
+    // Only the Latin script model is used (receipt scanner). Non-Latin ML Kit
+    // packs (chinese/devanagari/japanese/korean) were removed to shrink the APK.
 }
 
 flutter {

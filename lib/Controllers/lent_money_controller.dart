@@ -34,6 +34,7 @@ class LentMoneyController extends GetxController {
         return LentMoneyModel.fromMap(id, map);
       }).toList();
     }
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> fetchEntries() => _fetchFromFirestore();
@@ -184,6 +185,8 @@ class LentMoneyController extends GetxController {
   }
 
   Future<bool> markAsSettled(LentMoneyModel entry) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
     try {
       final updatedEntry = LentMoneyModel(
         id: entry.id,
@@ -203,6 +206,8 @@ class LentMoneyController extends GetxController {
     } catch (e) {
       ErrorHandler.showError("Failed to mark as settled: $e");
       return false;
+    } finally {
+      isSaving.value = false;
     }
   }
 
@@ -305,6 +310,8 @@ class LentMoneyController extends GetxController {
   }
 
   Future<bool> deleteEntry(String id) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
     try {
       await _repository.deleteEntry(id);
       LocalCacheService.invalidate(_cacheKey);
@@ -313,6 +320,8 @@ class LentMoneyController extends GetxController {
     } catch (e) {
       ErrorHandler.showError("Failed to delete entry: $e");
       return false;
+    } finally {
+      isSaving.value = false;
     }
   }
 }

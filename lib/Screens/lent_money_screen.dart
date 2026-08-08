@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:money_control/Utils/animation.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
@@ -297,10 +298,11 @@ class _LentMoneyScreenState extends State<LentMoneyScreen> {
           itemCount: _controller.entries.length,
           itemBuilder: (context, index) {
             final entry = _controller.entries[index];
-            return _buildEntryItem(entry, theme)
-                .animate()
-                .fadeIn(duration: 400.ms, delay: (index * 50).ms)
-                .slideX(begin: 0.1, end: 0, curve: Curves.easeOutExpo);
+            return animatedItem(
+              _buildEntryItem(entry, theme),
+              index,
+              slide: true,
+            );
           },
         ),
       );

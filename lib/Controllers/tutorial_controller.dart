@@ -47,26 +47,29 @@ class TutorialController {
     );
 
     // Target 2: Deep Scroll (Navbar Hides)
-    targets.add(
-      TargetFocus(
-        identify: "home_scroll",
-        keyTarget: keyNavBar,
-        alignSkip: Alignment.topLeft,
-        contents: [
-          TargetContent(
-            align: ContentAlign.top,
-            builder: (context, controller) {
-              return _buildTutorialContent(
-                "Immersive Scrolling",
-                "Scroll down to hide the navigation bar and see more content. Scroll up to bring it back.",
-              );
-            },
-          ),
-        ],
-        shape: ShapeLightFocus.RRect,
-        radius: 10,
-      ),
-    );
+    // Only add when the nav bar is actually mounted (hidden when hosted in MainShell).
+    if (keyNavBar.currentContext != null) {
+      targets.add(
+        TargetFocus(
+          identify: "home_scroll",
+          keyTarget: keyNavBar,
+          alignSkip: Alignment.topLeft,
+          contents: [
+            TargetContent(
+              align: ContentAlign.top,
+              builder: (context, controller) {
+                return _buildTutorialContent(
+                  "Immersive Scrolling",
+                  "Scroll down to hide the navigation bar and see more content. Scroll up to bring it back.",
+                );
+              },
+            ),
+          ],
+          shape: ShapeLightFocus.RRect,
+          radius: 10,
+        ),
+      );
+    }
 
     _showTutorial(context, targets, () async {
       await prefs.setBool(_keyHomeSeen, true);

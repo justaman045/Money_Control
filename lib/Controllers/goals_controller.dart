@@ -41,6 +41,7 @@ class GoalsController extends GetxController {
       }).toList();
       isLoading.value = false;
     }
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> _fetchFromFirestore() async {
@@ -70,6 +71,7 @@ class GoalsController extends GetxController {
     String emoji = '🎯',
   }) async {
     if (name.trim().isEmpty || targetAmount <= 0) return false;
+    if (isSaving.value) return false;
     isSaving.value = true;
     try {
       final goal = GoalModel(

@@ -6,8 +6,10 @@ import 'package:get/get.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Utils/responsive.dart';
-import 'package:money_control/Screens/homescreen.dart';
+import 'package:money_control/Screens/main_shell.dart';
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:money_control/Services/referral_service.dart';
+import 'package:money_control/Services/error_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:money_control/l10n/app_localizations.dart';
 import 'package:confetti/confetti.dart';
@@ -29,7 +31,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String? _userName;
   bool _isLoading = false;
 
-  final List<String> _currencies = ['₹', '\$', '€', '£', '¥'];
+  final List<Map<String, String>> _currencies = [
+    {'code': 'INR', 'symbol': '₹'},
+    {'code': 'USD', 'symbol': '\$'},
+    {'code': 'EUR', 'symbol': '€'},
+    {'code': 'GBP', 'symbol': '£'},
+    {'code': 'JPY', 'symbol': '¥'},
+  ];
 
   @override
   void initState() {
@@ -85,6 +93,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         // 3. Save to SharedPreferences for local check
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_onboarded', true);
+        final currencyCode = _currencies
+            .firstWhere(
+              (c) => c['symbol'] == _selectedCurrency,
+              orElse: () => const {'code': 'INR', 'symbol': '₹'},
+            )['code']!;
+        await prefs.setString('currency_code', currencyCode);
         await prefs.setString('currency_symbol', _selectedCurrency);
       }
 
@@ -92,15 +106,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _confettiController.play();
       await Future.delayed(const Duration(seconds: 1)); // Wait a bit for effect
 
-      Get.offAll(() => const BankingHomeScreen());
+      Get.offAll(() => const MainShell());
     } catch (e) {
-      if (!mounted) return;
-      Get.snackbar(
-        AppLocalizations.of(context)!.error,
-        "Setup failed: $e",
-        backgroundColor: AppColors.error,
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ErrorHandler.showError(
+          "Setup failed: $e",
+          title: AppLocalizations.of(context)!.error,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -131,220 +144,228 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 padding: EdgeInsets.symmetric(horizontal: 24.w),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
+                    constraints: BoxConstraints(
+                      maxWidth: Responsive.contentMaxWidth(context),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    SizedBox(height: 40.h),
-                    Center(
-                      child: Container(
-                        padding: EdgeInsets.all(20.r),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.rocket_launch_rounded,
-                          size: 60.sp,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 30.h),
-                    Text(
-                      l10n.welcomeUser(_userName ?? '...'),
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontSize: 28.sp,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      l10n.onboardingSubtitle,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 16.sp,
-                      ),
-                    ),
-                    SizedBox(height: 40.h),
-
-                    Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Step 1: Currency
-                          Text(
-                            l10n.chooseCurrencyStep,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
+                        SizedBox(height: 40.h),
+                        Center(
+                          child: Container(
+                            padding: EdgeInsets.all(20.r),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
                             ),
-                          ),
-                          SizedBox(height: 12.h),
-                          GlassContainer(
-                            padding: EdgeInsets.symmetric(horizontal: 16.w),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedCurrency,
-                                isExpanded: true,
-                                dropdownColor: isDark
-                                    ? AppColors.darkSurface
-                                    : Colors.white,
-                                icon: Icon(
-                                  Icons.arrow_drop_down_rounded,
-                                  color: AppColors.primary,
-                                  size: 30.sp,
-                                ),
-                                items: _currencies
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c,
-                                        child: Text(
-                                          c,
-                                          style: TextStyle(
-                                            color: textColor,
-                                            fontSize: 18.sp,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) =>
-                                    setState(() => _selectedCurrency = v!),
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(height: 24.h),
-
-                          // Step 2: Budget
-                          Text(
-                            l10n.setBudgetStep,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 12.h),
-                          GlassContainer(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 16.w,
-                              vertical: 8.h,
-                            ),
-                            child: TextFormField(
-                              controller: _budgetController,
-                              keyboardType: TextInputType.number,
-                              style: TextStyle(
-                                color: textColor,
-                                fontSize: 18.sp,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                hintText: l10n.budgetHint,
-                                hintStyle: TextStyle(
-                                  color: textColor.withValues(alpha: 0.4),
-                                  fontWeight: FontWeight.normal,
-                                ),
-                                filled: false,
-                              ),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return l10n.enterBudgetError;
-                                }
-                                if (double.tryParse(v) == null) {
-                                  return l10n.invalidNumberError;
-                                }
-                                return null;
-                              },
-                            ),
-                          ),
-                          SizedBox(height: 24.h),
-
-                          // Step 3: Referral Code (optional)
-                          Text(
-                            "Referral Code (Optional)",
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 8.h),
-                          Text(
-                            "Have a friend's code? Get 1 month free!",
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 13.sp,
+                            child: Icon(
+                              Icons.rocket_launch_rounded,
+                              size: 60.sp,
                               color: AppColors.primary,
                             ),
                           ),
-                          SizedBox(height: 10.h),
-                          GlassContainer(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 16.w,
-                              vertical: 8.h,
-                            ),
-                            child: TextFormField(
-                              controller: _referralController,
-                              textCapitalization: TextCapitalization.characters,
-                              style: TextStyle(
-                                color: textColor,
-                                fontSize: 18.sp,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 2,
-                              ),
-                              decoration: InputDecoration(
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                hintText: "e.g. AMAN05",
-                                hintStyle: TextStyle(
-                                  color: textColor.withValues(alpha: 0.4),
-                                  fontWeight: FontWeight.normal,
-                                  letterSpacing: 1,
-                                ),
-                                filled: false,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    SizedBox(height: 60.h),
-
-                    GestureDetector(
-                      onTap: _isLoading ? null : _finishSetup,
-                      child: Container(
-                        width: double.infinity,
-                        height: 56.h,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [AppColors.primary, AppColors.secondary],
-                          ),
-                          borderRadius: BorderRadius.circular(16.r),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.4),
-                              blurRadius: 12.w,
-                              offset: Offset(0, 4.w),
-                            ),
-                          ],
                         ),
-                        alignment: Alignment.center,
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                              )
-                            : Text(
-                                l10n.startTracking,
-                                style: TextStyle(
-                                  fontSize: 18.sp,
+                        SizedBox(height: 30.h),
+                        Text(
+                          l10n.welcomeUser(_userName ?? '...'),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontSize: 28.sp,
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          l10n.onboardingSubtitle,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontSize: 16.sp,
+                          ),
+                        ),
+                        SizedBox(height: 40.h),
+
+                        Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Step 1: Currency
+                              Text(
+                                l10n.chooseCurrencyStep,
+                                style: theme.textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.white,
                                 ),
                               ),
-                      ),
-                    ),
-                    SizedBox(height: 30.h),
+                              SizedBox(height: 12.h),
+                              GlassContainer(
+                                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _selectedCurrency,
+                                    isExpanded: true,
+                                    dropdownColor: isDark
+                                        ? AppColors.darkSurface
+                                        : Colors.white,
+                                    icon: Icon(
+                                      Icons.arrow_drop_down_rounded,
+                                      color: AppColors.primary,
+                                      size: 30.sp,
+                                    ),
+                                    items: _currencies
+                                        .map(
+                                          (c) => DropdownMenuItem(
+                                            value: c['symbol'],
+                                            child: Text(
+                                              "${c['symbol']} (${c['code']})",
+                                              style: TextStyle(
+                                                color: textColor,
+                                                fontSize: 18.sp,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) =>
+                                        setState(() => _selectedCurrency = v!),
+                                  ),
+                                ),
+                              ),
+
+                              SizedBox(height: 24.h),
+
+                              // Step 2: Budget
+                              Text(
+                                l10n.setBudgetStep,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 12.h),
+                              GlassContainer(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 8.h,
+                                ),
+                                child: TextFormField(
+                                  controller: _budgetController,
+                                  keyboardType: TextInputType.number,
+                                  style: TextStyle(
+                                    color: textColor,
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    hintText: l10n.budgetHint,
+                                    hintStyle: TextStyle(
+                                      color: textColor.withValues(alpha: 0.4),
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                                    filled: false,
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.isEmpty) {
+                                      return l10n.enterBudgetError;
+                                    }
+                                    if (double.tryParse(v) == null) {
+                                      return l10n.invalidNumberError;
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              SizedBox(height: 24.h),
+
+                              // Step 3: Referral Code (optional)
+                              Text(
+                                "Referral Code (Optional)",
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              Text(
+                                "Have a friend's code? Get 1 month free!",
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 13.sp,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              SizedBox(height: 10.h),
+                              GlassContainer(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 8.h,
+                                ),
+                                child: TextFormField(
+                                  controller: _referralController,
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  style: TextStyle(
+                                    color: textColor,
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 2,
+                                  ),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    hintText: "e.g. AMAN05",
+                                    hintStyle: TextStyle(
+                                      color: textColor.withValues(alpha: 0.4),
+                                      fontWeight: FontWeight.normal,
+                                      letterSpacing: 1,
+                                    ),
+                                    filled: false,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: 60.h),
+
+                        GestureDetector(
+                          onTap: _isLoading ? null : _finishSetup,
+                          child: Container(
+                            width: double.infinity,
+                            height: 56.h,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [
+                                  AppColors.primary,
+                                  AppColors.secondary,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16.r),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  blurRadius: 12.w,
+                                  offset: Offset(0, 4.w),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: _isLoading
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                  )
+                                : Text(
+                                    l10n.startTracking,
+                                    style: TextStyle(
+                                      fontSize: 18.sp,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        SizedBox(height: 30.h),
                       ],
                     ),
                   ),
@@ -353,19 +374,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             Align(
               alignment: Alignment.topCenter,
-              child: ConfettiWidget(
-                confettiController: _confettiController,
-                blastDirectionality: BlastDirectionality.explosive,
-                shouldLoop: false,
-                colors: const [
-                  Colors.green,
-                  Colors.blue,
-                  Colors.pink,
-                  Colors.orange,
-                  Colors.purple,
-                ],
-                createParticlePath: drawStar,
-              ),
+              child: PerformanceController.to.liteMode.value
+                  ? const SizedBox.shrink()
+                  : ConfettiWidget(
+                      confettiController: _confettiController,
+                      blastDirectionality: BlastDirectionality.explosive,
+                      shouldLoop: false,
+                      colors: const [
+                        Colors.green,
+                        Colors.blue,
+                        Colors.pink,
+                        Colors.orange,
+                        Colors.purple,
+                      ],
+                      createParticlePath: drawStar,
+                    ),
             ),
           ],
         ),

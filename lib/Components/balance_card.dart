@@ -92,22 +92,26 @@ class _BalanceCardState extends State<BalanceCard> {
           child: Stack(
             children: [
               // Static decorative blobs — isolated in their own repaint layer
-              // so balance value changes do not trigger repaints here.
+              // so balance value changes do not trigger repaints here. They are
+              // decorative only, so they must never block taps (the top-right
+              // blob can overlap the Send/Receive buttons on short screens).
               Positioned(
                 right: -60.w,
                 top: -60.w,
-                child: RepaintBoundary(
-                  child: SizedBox(
-                    width: 250.w,
-                    height: 250.w,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            Color(0x26FFFFFF),
-                            Colors.transparent,
-                          ],
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      width: 250.w,
+                      height: 250.w,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Color(0x26FFFFFF),
+                              Colors.transparent,
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -117,18 +121,20 @@ class _BalanceCardState extends State<BalanceCard> {
               Positioned(
                 left: -60.w,
                 bottom: -60.w,
-                child: RepaintBoundary(
-                  child: SizedBox(
-                    width: 200.w,
-                    height: 200.w,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            Color(0x1AFFFFFF),
-                            Colors.transparent,
-                          ],
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      width: 200.w,
+                      height: 200.w,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              Color(0x1AFFFFFF),
+                              Colors.transparent,
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -149,7 +155,7 @@ class _BalanceCardState extends State<BalanceCard> {
                         Text(
                           'Total Balance',
                           style: TextStyle(
-                            color: isDark ? Colors.white.withValues(alpha: 0.8) : AppColors.lightTextPrimary.withValues(alpha: 0.8),
+                            color: Colors.white.withValues(alpha: 0.8),
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w500,
                             letterSpacing: 0.5,
@@ -176,13 +182,13 @@ class _BalanceCardState extends State<BalanceCard> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: _includeLentMoney.value
-                                        ? isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.14)
+                                        ? Colors.white.withValues(alpha: 0.2)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12.r),
                                     border: Border.all(
                                       color: _includeLentMoney.value
-                                          ? isDark ? Colors.white.withValues(alpha: 0.4) : AppColors.lightBorder.withValues(alpha: 0.4)
-                                          : isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.1),
+                                          ? Colors.white.withValues(alpha: 0.4)
+                                          : Colors.white.withValues(alpha: 0.1),
                                     ),
                                   ),
                                   child: Text(
@@ -190,7 +196,7 @@ class _BalanceCardState extends State<BalanceCard> {
                                         ? "Lent Included"
                                         : "+ Add Lent",
                                     style: TextStyle(
-                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                      color: Colors.white,
                                       fontSize: 10.sp,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -217,13 +223,13 @@ class _BalanceCardState extends State<BalanceCard> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: _subtractSubscriptions.value
-                                        ? isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.14)
+                                        ? Colors.white.withValues(alpha: 0.2)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(12.r),
                                     border: Border.all(
                                       color: _subtractSubscriptions.value
-                                          ? isDark ? Colors.white.withValues(alpha: 0.4) : AppColors.lightBorder.withValues(alpha: 0.4)
-                                          : isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.1),
+                                          ? Colors.white.withValues(alpha: 0.4)
+                                          : Colors.white.withValues(alpha: 0.1),
                                     ),
                                   ),
                                   child: Text(
@@ -231,7 +237,7 @@ class _BalanceCardState extends State<BalanceCard> {
                                         ? "- ${CurrencyController.to.currencySymbol.value}${_recurringPaymentController.pendingSubscriptions.value.toStringAsFixed(0)} (Subs)"
                                         : "- Subs",
                                     style: TextStyle(
-                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                      color: Colors.white,
                                       fontSize: 10.sp,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -264,7 +270,7 @@ class _BalanceCardState extends State<BalanceCard> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 36.sp,
-                                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                      color: Colors.white,
                                       letterSpacing: -1.0,
                                       shadows: [
                                         BoxShadow(
@@ -293,7 +299,7 @@ class _BalanceCardState extends State<BalanceCard> {
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 36.sp,
-                                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                          color: Colors.white,
                                           letterSpacing: -1.0,
                                           shadows: [
                                             BoxShadow(
@@ -320,7 +326,7 @@ class _BalanceCardState extends State<BalanceCard> {
                                   _privacyController.isPrivacyMode.value
                                       ? Icons.visibility_off_outlined
                                       : Icons.visibility_outlined,
-                                  color: isDark ? Colors.white.withValues(alpha: 0.5) : AppColors.lightTextPrimary.withValues(alpha: 0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   size: 20.sp,
                                 ),
                               ),
@@ -394,7 +400,7 @@ class _BalanceCardState extends State<BalanceCard> {
                             Text(
                               '🔥 $streak day streak',
                               style: TextStyle(
-                                color: isDark ? Colors.white.withValues(alpha: 0.85) : AppColors.lightTextPrimary.withValues(alpha: 0.85),
+                                color: Colors.white.withValues(alpha: 0.85),
                                 fontSize: 12.sp,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -410,7 +416,7 @@ class _BalanceCardState extends State<BalanceCard> {
                           child: _glassActionButton(
                             label: "Send",
                             icon: Icons.north_east_rounded,
-                            color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                            color: Colors.white,
                             onTap: () {
                               HapticFeedback.lightImpact();
                               gotoPage(PaymentScreen(type: PaymentType.send));
@@ -422,7 +428,7 @@ class _BalanceCardState extends State<BalanceCard> {
                           child: _glassActionButton(
                             label: "Receive",
                             icon: Icons.south_west_rounded,
-                            color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                            color: Colors.white,
                             onTap: () {
                               HapticFeedback.lightImpact();
                               gotoPage(
@@ -449,16 +455,15 @@ class _BalanceCardState extends State<BalanceCard> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 54.h,
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.084),
+          color: Colors.white.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(18.r),
           border: Border.all(
-            color: isDark ? Colors.white.withValues(alpha: 0.15) : AppColors.lightBorder.withValues(alpha: 0.15),
+            color: Colors.white.withValues(alpha: 0.15),
             width: 1.5,
           ),
         ),
@@ -470,7 +475,7 @@ class _BalanceCardState extends State<BalanceCard> {
             Text(
               label,
               style: TextStyle(
-                color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 14.sp,
               ),
@@ -483,13 +488,12 @@ class _BalanceCardState extends State<BalanceCard> {
 
   // Keep helpers but ensure they return valid widgets for new style
   Widget _balanceLabel(String text, ColorScheme scheme) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
       text,
       style: TextStyle(
         fontWeight: FontWeight.bold,
         fontSize: 36.sp,
-        color: isDark ? Colors.white : AppColors.lightTextPrimary,
+        color: Colors.white,
         letterSpacing: -1.0,
       ),
     );

@@ -10,6 +10,7 @@ import 'package:money_control/Components/glass_container.dart'; // Unified Glass
 import 'package:money_control/Components/colors.dart'; // App Colors
 import 'package:money_control/Screens/onboarding_screen.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -44,6 +45,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   // ================= EMAIL SIGN UP =================
   Future<void> _signUpWithEmail() async {
+    if (_isLoading) return;
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
 
@@ -74,13 +76,7 @@ class _AuthScreenState extends State<AuthScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      Get.snackbar(
-        'Success',
-        'Account created! Please verify your email.',
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      ErrorHandler.showSuccess('Account created! Please verify your email.');
 
       await Future.delayed(const Duration(seconds: 2));
       goBack();
@@ -95,6 +91,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   // ================= GOOGLE SIGN UP =================
   Future<void> _signUpWithGoogle() async {
+    if (_isLoading) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;

@@ -55,7 +55,7 @@ showGeneralDialog(context: Get.overlayContext!, ...);
 ```bash
 flutter pub get
 flutter analyze --no-fatal-infos   # CI gate (warnings→errors, infos OK)
-flutter test                        # 6 unit/widget test files (pure logic only — no Firebase)
+flutter test                        # 90 unit/widget tests ONLY (test/) — never integration tests
 flutter test test/<file>_test.dart  # single file
 flutter run
 flutter build apk --release
@@ -64,7 +64,23 @@ flutter build web --release --base-href /WealthSync/   # GitHub Pages deploy
 flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n.yaml + generate: true)
 ```
 
-CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter **3.35.5**, Dart `^3.9.2`. On merge to `master`, CI auto-bumps `pubspec.yaml` to `2.0.<run_number>`, updates `app_version.json` + README download link, creates a signed GitHub release (`v2.0.<run_number>`), and deploys web to GitHub Pages under base-href `/WealthSync/`. Version-commit/README-commit loops are avoided by skipping the commit when the message starts with `CI:`.
+**Integration tests never run under plain `flutter test`** — they only run when explicitly invoked. Manual local run (emulator-5554, live Firebase account):
+
+```bash
+# Credentials come from CI secrets; paste as --dart-define for local runs.
+flutter test integration_test -d emulator-5554 --no-uninstall \
+  --dart-define=TEST_EMAIL=... --dart-define=TEST_PASSWORD=... \
+  --file-reporter json:build/report/integration.json
+mkdir -p build/report/screenshots
+adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read f; do
+  adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$f" > "build/report/screenshots/$f"
+done
+dart run tool/generate_test_report.dart --unit=build/report/unit.json \
+  --integration=build/report/integration.json \
+  --screenshots=build/report/screenshots --out=build/report/report.html
+```
+
+CI (`.github/workflows/flutter_build.yml`): analyze → unit/widget test → integration test (Android emulator, live Firebase test account via `TEST_EMAIL`/`TEST_PASSWORD` secrets) → build **gated on integration_test passing** (`build`/`build_web` `needs: integration_test` — nothing ships until every test passes). On merge to `master`, CI auto-bumps `pubspec.yaml` to `2.0.<run_number>`, updates `app_version.json` + README download link, creates a signed GitHub release (`v2.0.<run_number>`), and deploys web to GitHub Pages under base-href `/WealthSync/`. Version-commit/README-commit loops are avoided by skipping the commit when the message starts with `CI:`. Every run uploads a self-contained `report.html` artifact (pass/fail per test, collapsible errors, base64 screenshots) — generated even on red runs.
 
 ## Architecture
 
@@ -83,14 +99,25 @@ CI (`.github/workflows/flutter_build.yml`): analyze → test → build. Flutter 
 | `lib/Platform/` | Platform abstraction stubs for 9 services (biometric, geocoding, IAP, notification, SMS, etc.) |
 | `lib/l10n/` | ARB localization files (`app_en.arb` template) |
 | `lib/data/` | Challenge preset seed data |
-| `test/` | 6 unit/widget test files (inactivity_reminder, lent_money_model, sms_category, wealth_data, wealth_math, widget) |
-| `integration_test/` | 7 integration tests — require a configured Firebase backend (no emulator wiring; `mainCommon(isTest: true)` only skips Crashlytics/notifications) |
+| `test/` | 9 unit/widget test files (inactivity_reminder, lent_money_model, recurring_payment_model, sms_category, upi_apps, upi_qr, wealth_data, wealth_math, widget) |
+| `integration_test/` | 17 integration tests — require a live Firebase backend and are run against emulator-5554 with `TEST_EMAIL`/`TEST_PASSWORD` dart-defines (see `test_credentials.dart`). `mainCommon(isTest: true)` only skips Crashlytics/notifications. Tests: analytics_insights, add_transaction, app_test, budget_categories, edit_profile, full_app_e2e, goals_challenges, lent_money_split_bill, login, login_valid, receive_transaction_e2e, search_transaction, settings, subscription_flow, subscription_screen, transaction_management, wealth_assets. Helpers in `test_helpers.dart`: `launchAndSignIn`, `tapNavTab` (auto-reveals the auto-hiding bottom bar), `handleSplashAndOnboarding`, `loginIfNeeded`, `createTransaction`, `waitForHome`. |
 
-ThemeController is inline in `main.dart` (registered before any screen).
+## Integration Test Gotchas
+
+1. **Tests need the dart-defines** — `flutter test integration_test -d emulator-5554 --dart-define=TEST_EMAIL=... --dart-define=TEST_PASSWORD=...` or auth fails with `[firebase_auth/channel-error]` ("Given String is empty or null"). `test_credentials.dart` uses `String.fromEnvironment` with empty defaults on purpose.
+2. **Shared Pro account** — `wilajor863@copawoke.com` is `isPro=true`; free-path assertions (`'Budgeting'`, `'Upgrade to Pro'`, `'Monthly'`) only work against a throwaway/free account.
+3. **`createTransaction` waits for the payment screen to open AND pop** — after submit the screen lingers ~700 ms for the confetti celebration before `Navigator.pop`, and 'Total Balance' is already present in the offstage home route below, so `waitForHome` alone races into the next tap.
+4. **Decorative blobs must not block taps** — the balance-card gradient circles are wrapped in `IgnorePointer`; they overlap the Send/Receive buttons once the streak banner grows the card (`balance_card.dart`).
+5. **`_InviteFriendsCard` listener needs an `onError`** — the `users/{email}` snapshots stream errors with permission-denied after sign-out; without the handler the settings sign-out test fails on an unhandled exception (`settings.dart`).
+6. **Data-dependent analytics markers** — 'Monthly Trend' only renders with ≥2 months of data ('Current Period' otherwise), and 'Expense Breakdown' needs non-zero expenses. `analytics_insights_test.dart` seeds an expense + income first and accepts either trend title. |
+7. **`flutter test` uninstalls the app after integration runs** — the `--uninstall` flag defaults to true (Flutter tool), wiping the device cache that holds the screenshots. Always pass `--no-uninstall` (CI does) so the `adb exec-out run-as ... cat` pull after the run finds them. Per-file reinstalls use `adb install -r`, so screenshots accumulate across test files while the app stays installed.
+8. **`testWidgetsWithScreenshots` auto-captures screenshots** — every integration test uses the wrapper in `test_helpers.dart`; on success it writes `result_<name>.png` to `<app cache>/screenshots/`, on failure `failure_<name>.png` (error is rethrown so the test still fails). `tool/generate_test_report.dart` embeds them base64 into the single-file `report.html`; new integration tests must keep using the wrapper so their screenshots land in the report.
+
+ThemeController is inline in `main.dart` (registered before any screen). Note: `PerformanceController` and `ConnectivityController` are GetX controllers but live in `lib/Services/` (not `lib/Controllers/`).
 
 ## Controller Registration (2-Phase)
 
-**Phase 1 — `mainCommon()`** (in this order, `main.dart`): ThemeController → PrivacyController → CurrencyController → AuthController → SubscriptionController → PaymentConfigService → IapService → BiometricService.
+**Phase 1 — `mainCommon()`** (in this order, `main.dart`): ThemeController → PrivacyController → CurrencyController → AuthController → SubscriptionController → PaymentConfigService → PerformanceController → ConnectivityController → IapService → BiometricService.
 
 **Phase 2 — `_handleAuthChange()` after login**: TransactionController → ProfileController → AnalyticsController → BudgetController → GoalsController → LoanController → ChallengesController → LentMoneyController → RecurringPaymentController.
 
@@ -111,9 +138,9 @@ One Firestore subcollection per asset type under `users/{userEmail}/`, plus `wea
 
 **WealthPortfolio** (`lib/Models/wealth_data.dart`): 24 asset fields + `custom` map, `targets`, `hiddenKeys`. `totalAssets` sums all 24 + custom entries. `totalLiabilities = loans + creditCard + bnpl`.
 
-**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:60` (primary subscription in `initState`). Note: `_loadData()` (line 76) also calls `getPortfolio()` (line 91) for geo-enrichment, but the primary real-time data comes from the stream.
+**Dashboard** must use `streamPortfolio()` (not `getPortfolio()`) — one-shot fetch leaves amounts stale after navigating back. Confirmed in `wealth_builder.dart:61` (primary subscription in `initState`). Note: `_loadData()` (line 74) also calls `getPortfolio()` (line 89) for geo-enrichment, but the primary real-time data comes from the stream.
 
-**Generic screen**: `AssetDetailScreen(config:)` for all 24 types. Custom screens: `RealEstateDetailScreen`, `VehicleDetailScreen`, `InsurancePolicyScreen`, `CreditCardDetailScreen`.
+**Generic screen**: `AssetDetailScreen(config:)` — 22 configs in `lib/Config/asset_screen_configs.dart` (all types except the four below). Custom screens: `RealEstateDetailScreen` (properties), `VehicleDetailScreen`, `InsurancePolicyScreen`, `CreditCardDetailScreen`.
 
 ## Code Style
 
@@ -144,7 +171,7 @@ Priority: refund/cashback→credit, debited/deducted/withdrawn/spent/sent→debi
 7. **Don't mix GetX + Flutter navigator** — `Get.dialog()` + `Navigator.pop()` + `Get.snackbar()` crashes. Use `showDialog()` + `Navigator.of(context, rootNavigator: true).pop()` + `ScaffoldMessenger.showSnackBar()`.
 8. **FilePicker.saveFile() returns content:// on Android** — cannot `File(uri).writeAsString()`. Pass `bytes: Uint8List.fromList(utf8.encode(csv))`.
 9. **`orderBy() as Query` is unnecessary cast** — triggers `unnecessary_cast` warning.
-10. **SmsService static cache leak** — `resetCache()` called on logout to clear static `_correctionCache`, `_historyCache`, `_rulesLoaded`.
+10. **Static cache leaks on logout** — `SmsService.resetCache()` (clears `_correctionCache`, `_historyCache`, `_rulesLoaded`) and `RecurringService.resetCache()` are both called on logout (`main.dart` + `auth_controller.dart`).
 11. **Trial state race** — subscription trial flags must be set *after* Firestore confirms the write.
 12. **BackdropFilter sigma** — keep sigma ≤ 4 and wrap in `RepaintBoundary`. Sigma 10 + two instances = severe scroll jank (`glass_container.dart`).
 13. **Avoid ShaderMask on animated text** — renders child offscreen each frame. Use direct `TextStyle(color:)` instead (`balance_card.dart`).

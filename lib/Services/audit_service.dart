@@ -10,8 +10,10 @@ class AuditService {
   ) {
     final groups = <String, List<TransactionModel>>{};
     for (final tx in transactions) {
+      // Signed amount (not abs) — an income and an expense of the same size
+      // to the same merchant on the same day are NOT duplicates.
       final key =
-          '${tx.recipientName.toLowerCase()}_${tx.date.day}_${tx.date.month}_${tx.date.year}_${tx.amount.abs()}';
+          '${tx.recipientName.toLowerCase()}_${tx.date.day}_${tx.date.month}_${tx.date.year}_${tx.amount.toStringAsFixed(2)}';
       groups.putIfAbsent(key, () => []).add(tx);
     }
     final now = DateTime.now();
@@ -184,7 +186,7 @@ class AuditService {
     final rows = <List<dynamic>>[
       ['Date', 'Description', 'Category', 'Debit', 'Credit', 'Running Balance'],
       ...entries.map((e) => [
-            e.date.toIso8601String().substring(0, 10),
+            e.date.toLocal().toIso8601String().substring(0, 10),
             e.description,
             e.category,
             e.debit?.toStringAsFixed(2) ?? '',

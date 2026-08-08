@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import 'package:flutter/rendering.dart' as rendering;
+import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/skeleton_loader.dart';
+import 'package:money_control/Components/staggered_slide_fade.dart';
 import 'package:money_control/Utils/responsive.dart';
 
 import 'package:money_control/Components/adaptive_scaffold.dart';
@@ -18,7 +20,8 @@ import 'package:money_control/Repositories/transaction_repository.dart';
 import 'package:money_control/Screens/cateogary_history.dart';
 
 class AIInsightsScreen extends StatefulWidget {
-  const AIInsightsScreen({super.key});
+  final bool showNavigation;
+  const AIInsightsScreen({super.key, this.showNavigation = true});
 
   @override
   State<AIInsightsScreen> createState() => _AIInsightsScreenState();
@@ -100,7 +103,9 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
         return;
       }
 
-      if (!Get.isRegistered<TransactionController>()) Get.put(TransactionController());
+      if (!Get.isRegistered<TransactionController>()) {
+        Get.put(TransactionController());
+      }
       final TransactionController txController = Get.find();
       if (!txController.isLoading.value) {
         final freshTx = await _repository.getTransactionsStream().first;
@@ -122,7 +127,8 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       if (allTx.isEmpty) {
         setState(() {
           loading = false;
-          error = "No expense transactions yet.\nAdd a 'Send' transaction to see AI insights.";
+          error =
+              "No expense transactions yet.\nAdd a 'Send' transaction to see AI insights.";
         });
         return;
       }
@@ -264,10 +270,13 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       double calcForecastVariable;
       if (historicalVarMonthly > 0) {
         calcForecastVariable =
-            historicalVarMonthly * varHistWeight + currentVarPaced * varCurrWeight;
+            historicalVarMonthly * varHistWeight +
+            currentVarPaced * varCurrWeight;
       } else {
         // No history: project current pace to full month
-        calcForecastVariable = currentVarPaced > 0 ? currentVarPaced : currentVar;
+        calcForecastVariable = currentVarPaced > 0
+            ? currentVarPaced
+            : currentVar;
       }
 
       // Never forecast less than what's already been spent
@@ -297,7 +306,10 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       }
 
       overshootPercent = usualMonthAvg > 0 && forecastTotal > usualMonthAvg
-          ? ((forecastTotal - usualMonthAvg) / usualMonthAvg * 100).clamp(0.0, 999.0)
+          ? ((forecastTotal - usualMonthAvg) / usualMonthAvg * 100).clamp(
+              0.0,
+              999.0,
+            )
           : 0;
 
       // ======================================================
@@ -349,7 +361,10 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
               : catHistAvg;
 
           final double catProgress = daysPassed / daysInMonth;
-          final double catHistWeight = (1.0 - catProgress * 0.8).clamp(0.2, 1.0);
+          final double catHistWeight = (1.0 - catProgress * 0.8).clamp(
+            0.2,
+            1.0,
+          );
           final double catCurrWeight = 1.0 - catHistWeight;
 
           if (catHistAvg > 0) {
@@ -417,7 +432,8 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
 
     return AdaptiveScaffold(
       currentIndex: 2,
-      isVisible: _isBottomBarVisible,
+      isVisible: widget.showNavigation ? _isBottomBarVisible : null,
+      showNavigation: widget.showNavigation,
       backgroundColor: scheme.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -464,62 +480,85 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       padding: EdgeInsets.all(16.w),
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
-          child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (isWide)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _StaggeredSlideFade(delay: 0, child: _buildForecastCard(scheme))),
-                SizedBox(width: 16.w),
-                Expanded(child: _StaggeredSlideFade(delay: 100, child: _buildDailyLimitCard(scheme))),
-              ],
-            )
-          else ...[
-            _StaggeredSlideFade(delay: 0, child: _buildForecastCard(scheme)),
-            SizedBox(height: 20.h),
-            _StaggeredSlideFade(delay: 100, child: _buildDailyLimitCard(scheme)),
-          ],
-          SizedBox(height: 20.h),
-          _StaggeredSlideFade(delay: 200, child: _buildHeatmapCard(scheme)),
-          SizedBox(height: 24.h),
-          _StaggeredSlideFade(
-            delay: 300,
-            child: Text(
-              "🔮 Category Insights (This Month)",
-              style: TextStyle(
-                fontSize: 17.sp,
-                fontWeight: FontWeight.bold,
-                color: scheme.onSurface,
-                letterSpacing: 0.5,
-              ),
-            ),
+          constraints: BoxConstraints(
+            maxWidth: Responsive.contentMaxWidth(context),
           ),
-          SizedBox(height: 12.h),
-          if (isWide)
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 12.w,
-              mainAxisSpacing: 12.h,
-              childAspectRatio: 1.8,
-              children: insights.map((c) => _buildInsightCard(c, scheme)).toList(),
-            )
-          else
-            ...insights.asMap().entries.map((entry) {
-              final index = entry.key;
-              final c = entry.value;
-              return _StaggeredSlideFade(
-                delay: 350 + (index * 100),
-                child: _buildInsightCard(c, scheme),
-            );
-          }),
-          SizedBox(height: (Responsive.isTablet(context) && Responsive.isLandscape(context)) ? 20.h : 100.h),
-        ],
-      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isWide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: StaggeredSlideFade(
+                        delay: 0,
+                        child: _buildForecastCard(scheme),
+                      ),
+                    ),
+                    SizedBox(width: 16.w),
+                    Expanded(
+                      child: StaggeredSlideFade(
+                        delay: 100,
+                        child: _buildDailyLimitCard(scheme),
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                StaggeredSlideFade(delay: 0, child: _buildForecastCard(scheme)),
+                SizedBox(height: 20.h),
+                StaggeredSlideFade(
+                  delay: 100,
+                  child: _buildDailyLimitCard(scheme),
+                ),
+              ],
+              SizedBox(height: 20.h),
+              StaggeredSlideFade(delay: 200, child: _buildHeatmapCard(scheme)),
+              SizedBox(height: 24.h),
+              StaggeredSlideFade(
+                delay: 300,
+                child: Text(
+                  "🔮 Category Insights (This Month)",
+                  style: TextStyle(
+                    fontSize: 17.sp,
+                    fontWeight: FontWeight.bold,
+                    color: scheme.onSurface,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              if (isWide)
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12.w,
+                  mainAxisSpacing: 12.h,
+                  childAspectRatio: 1.8,
+                  children: insights
+                      .map((c) => _buildInsightCard(c, scheme))
+                      .toList(),
+                )
+              else
+                ...insights.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final c = entry.value;
+                  return StaggeredSlideFade(
+                    delay: 350 + (index * 100),
+                    child: _buildInsightCard(c, scheme),
+                  );
+                }),
+              SizedBox(
+                height:
+                    (Responsive.isTablet(context) &&
+                        Responsive.isLandscape(context))
+                    ? 20.h
+                    : 100.h,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -752,7 +791,10 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.8), // Glass-like base
         borderRadius: BorderRadius.circular(22.r),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+            color: scheme.brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.08)
+                : AppColors.lightBorder),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -877,7 +919,10 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.8), // Glass-like base
         borderRadius: BorderRadius.circular(22.r),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+            color: scheme.brightness == Brightness.dark
+                ? Colors.white.withValues(alpha: 0.08)
+                : AppColors.lightBorder),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -928,7 +973,8 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: DateTime(now.year, now.month, 1).weekday % 7 + daysInMonth,
+            itemCount:
+                DateTime(now.year, now.month, 1).weekday % 7 + daysInMonth,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
               mainAxisSpacing: 8.h,
@@ -968,7 +1014,9 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                     border: isToday
                         ? Border.all(color: Colors.blueAccent, width: 1.5)
                         : Border.all(
-                            color: Colors.white.withValues(alpha: 0.05),
+                            color: scheme.brightness == Brightness.dark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : AppColors.lightBorder,
                           ),
                     boxShadow: [
                       if (intensity > 0.3)
@@ -1037,11 +1085,13 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
         final now = DateTime.now();
         final start = DateTime(now.year, now.month, 1);
         final end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-        Get.to(() => CategoryTransactionsScreen(
-          categoryName: c.category,
-          startDate: start,
-          endDate: end,
-        ));
+        Get.to(
+          () => CategoryTransactionsScreen(
+            categoryName: c.category,
+            startDate: start,
+            endDate: end,
+          ),
+        );
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -1049,151 +1099,155 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
         padding: EdgeInsets.all(16.w),
         decoration: BoxDecoration(
           color: scheme.surface,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.onSurface.withValues(alpha: 0.03),
-            blurRadius: 10.w,
-            offset: Offset(0, 4.w),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header: Name + Trend
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                c.category,
-                style: TextStyle(
-                  fontSize: 15.sp,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
-                ),
-              ),
-              if (c.trendPercent.abs() > 1) // Only show significant trends
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: trendColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6.r),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(trendIcon, color: trendColor, size: 14.sp),
-                      SizedBox(width: 2.w),
-                      Text(
-                        "${c.trendPercent.abs().toStringAsFixed(0)}%",
-                        style: TextStyle(
-                          color: trendColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11.sp,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-
-          // Progress Bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10.r),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8.h,
-              backgroundColor: scheme.onSurface.withValues(alpha: 0.05),
-              valueColor: AlwaysStoppedAnimation<Color>(healthColor),
+          borderRadius: BorderRadius.circular(20.r),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.onSurface.withValues(alpha: 0.03),
+              blurRadius: 10.w,
+              offset: Offset(0, 4.w),
             ),
-          ),
-          SizedBox(height: 12.h),
-
-          // Stats Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Spent: ${CurrencyController.to.currencySymbol.value}${c.currentSoFar.toStringAsFixed(0)}",
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w600,
-                      color: healthColor,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    "Predicted: ${CurrencyController.to.currencySymbol.value}${c.forecastMonthTotal.toStringAsFixed(0)}",
-                    style: TextStyle(
-                      fontSize: 11.5.sp,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    "Usual: ${CurrencyController.to.currencySymbol.value}${c.smartBudget.toStringAsFixed(0)}",
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: scheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    "Limit",
-                    style: TextStyle(
-                      fontSize: 11.sp,
-                      color: scheme.onSurface.withValues(alpha: 0.4),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          SizedBox(height: 12.h),
-
-          // Insight Message
-          Container(
-            padding: EdgeInsets.all(10.w),
-            decoration: BoxDecoration(
-              color: scheme.surface,
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Row(
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: Name + Trend
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  Icons.tips_and_updates_outlined,
-                  size: 16.sp,
-                  color: scheme.primary.withValues(alpha: 0.7),
+                Text(
+                  c.category,
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
                 ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: Text(
-                    c.message,
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.85),
-                      fontSize: 11.5.sp,
-                      height: 1.2,
-                      fontWeight: FontWeight.w500,
+                if (c.trendPercent.abs() > 1) // Only show significant trends
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 6.w,
+                      vertical: 2.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: trendColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6.r),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(trendIcon, color: trendColor, size: 14.sp),
+                        SizedBox(width: 2.w),
+                        Text(
+                          "${c.trendPercent.abs().toStringAsFixed(0)}%",
+                          style: TextStyle(
+                            color: trendColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11.sp,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+
+            // Progress Bar
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10.r),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8.h,
+                backgroundColor: scheme.onSurface.withValues(alpha: 0.05),
+                valueColor: AlwaysStoppedAnimation<Color>(healthColor),
+              ),
+            ),
+            SizedBox(height: 12.h),
+
+            // Stats Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Spent: ${CurrencyController.to.currencySymbol.value}${c.currentSoFar.toStringAsFixed(0)}",
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: healthColor,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      "Predicted: ${CurrencyController.to.currencySymbol.value}${c.forecastMonthTotal.toStringAsFixed(0)}",
+                      style: TextStyle(
+                        fontSize: 11.5.sp,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      "Usual: ${CurrencyController.to.currencySymbol.value}${c.smartBudget.toStringAsFixed(0)}",
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      "Limit",
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: scheme.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ),
-        ],
+
+            SizedBox(height: 12.h),
+
+            // Insight Message
+            Container(
+              padding: EdgeInsets.all(10.w),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.tips_and_updates_outlined,
+                    size: 16.sp,
+                    color: scheme.primary.withValues(alpha: 0.7),
+                  ),
+                  SizedBox(width: 8.w),
+                  Expanded(
+                    child: Text(
+                      c.message,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.85),
+                        fontSize: 11.5.sp,
+                        height: 1.2,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }
 
@@ -1224,57 +1278,3 @@ class CategoryInsight {
 // ============================================
 // ANIMATION HELPERS
 // ============================================
-
-class _StaggeredSlideFade extends StatefulWidget {
-  final Widget child;
-  final int delay;
-
-  const _StaggeredSlideFade({required this.child, this.delay = 0});
-
-  @override
-  State<_StaggeredSlideFade> createState() => _StaggeredSlideFadeState();
-}
-
-class _StaggeredSlideFadeState extends State<_StaggeredSlideFade>
-    with SingleTickerProviderStateMixin {
-  AnimationController? _controller;
-  late Animation<double> _fadeAnim;
-  late Animation<Offset> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-
-    _fadeAnim = CurvedAnimation(parent: _controller!, curve: Curves.easeOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller!, curve: Curves.easeOutQuad));
-
-    if (widget.delay == 0) {
-      _controller?.forward();
-    } else {
-      Future.delayed(Duration(milliseconds: widget.delay), () {
-        if (mounted) _controller?.forward();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: SlideTransition(position: _slideAnim, child: widget.child),
-    );
-  }
-}

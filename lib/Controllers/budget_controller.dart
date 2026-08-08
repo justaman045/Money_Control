@@ -2,10 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Controllers/subscription_controller.dart';
 import 'package:money_control/Services/cache_service.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class BudgetController extends GetxController {
   static BudgetController get to => Get.find();
@@ -53,6 +53,7 @@ class BudgetController extends GetxController {
       }));
       _calculateSpending();
     }
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> fetchBudgetsAndSpends() async {
@@ -110,7 +111,7 @@ class BudgetController extends GetxController {
       }
     } catch (e) {
       debugPrint("Error fetching budgets: $e");
-      Get.snackbar("Error", "Failed to load budgets");
+      ErrorHandler.showError("Failed to load budgets");
     } finally {
       isLoading.value = false;
     }
@@ -171,17 +172,9 @@ class BudgetController extends GetxController {
 
       LocalCacheService.invalidate(_cacheKey);
 
-      Get.snackbar(
-        "Success",
-        "Budget saved for $categoryName",
-        backgroundColor: Colors.green,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
-        margin: EdgeInsets.all(20.w),
-        borderRadius: 20.r,
-      );
+      ErrorHandler.showSuccess("Budget saved for $categoryName");
     } catch (e) {
-      Get.snackbar("Error", "Failed to save budget");
+      ErrorHandler.showError("Failed to save budget");
     }
   }
 }

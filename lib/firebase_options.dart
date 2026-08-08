@@ -45,7 +45,9 @@ class DefaultFirebaseOptions {
     messagingSenderId: '823109031805',
     projectId: 'moneycontroljustaman045',
     authDomain: 'moneycontroljustaman045.firebaseapp.com',
+    databaseURL: 'https://moneycontroljustaman045-default-rtdb.firebaseio.com',
     storageBucket: 'moneycontroljustaman045.firebasestorage.app',
+    measurementId: 'G-HXW5E3ESEJ',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -53,25 +55,31 @@ class DefaultFirebaseOptions {
     appId: '1:823109031805:android:9fb6d047fc753301295e14',
     messagingSenderId: '823109031805',
     projectId: 'moneycontroljustaman045',
+    databaseURL: 'https://moneycontroljustaman045-default-rtdb.firebaseio.com',
     storageBucket: 'moneycontroljustaman045.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDaxiqIIIk47tzp1IuKhJMTZaals3FR1DU',
     appId: '1:823109031805:ios:b4d3c7df3af6e83f295e14',
     messagingSenderId: '823109031805',
     projectId: 'moneycontroljustaman045',
+    databaseURL: 'https://moneycontroljustaman045-default-rtdb.firebaseio.com',
     storageBucket: 'moneycontroljustaman045.firebasestorage.app',
+    androidClientId: '823109031805-69u2dk0vbdtjgvuk9nvo6a3dsri4mbp8.apps.googleusercontent.com',
+    iosClientId: '823109031805-2a1nhfu6anoe1q2em3bda8qeu961g5ck.apps.googleusercontent.com',
     iosBundleId: 'app.vercel.justaman045.moneyControl',
   );
-
   // TODO: Register a dedicated macOS app in Firebase Console and replace this with macOS-specific values.
+
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyDaxiqIIIk47tzp1IuKhJMTZaals3FR1DU',
     appId: '1:823109031805:ios:b4d3c7df3af6e83f295e14',
     messagingSenderId: '823109031805',
     projectId: 'moneycontroljustaman045',
+    databaseURL: 'https://moneycontroljustaman045-default-rtdb.firebaseio.com',
     storageBucket: 'moneycontroljustaman045.firebasestorage.app',
+    androidClientId: '823109031805-69u2dk0vbdtjgvuk9nvo6a3dsri4mbp8.apps.googleusercontent.com',
+    iosClientId: '823109031805-2a1nhfu6anoe1q2em3bda8qeu961g5ck.apps.googleusercontent.com',
     iosBundleId: 'app.vercel.justaman045.moneyControl',
   );
 
@@ -81,6 +89,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '823109031805',
     projectId: 'moneycontroljustaman045',
     authDomain: 'moneycontroljustaman045.firebaseapp.com',
+    databaseURL: 'https://moneycontroljustaman045-default-rtdb.firebaseio.com',
     storageBucket: 'moneycontroljustaman045.firebasestorage.app',
+    measurementId: 'G-QKZN14WPMY',
   );
 }

@@ -47,6 +47,7 @@ class LoanController extends GetxController {
       }).toList();
       isLoading.value = false;
     }
+    LocalCacheService.invalidate(_cacheKey);
   }
 
   Future<void> _fetchFromFirestore() async {
@@ -141,6 +142,8 @@ class LoanController extends GetxController {
   }
 
   Future<bool> deleteLoan(String id) async {
+    if (isSaving.value) return false;
+    isSaving.value = true;
     try {
       final loan = loans.firstWhereOrNull((l) => l.id == id);
       if (loan?.linkedRecurringPaymentId != null) {
@@ -154,6 +157,8 @@ class LoanController extends GetxController {
       debugPrint('Loan error: $e');
       ErrorHandler.showError("Failed to remove loan.");
       return false;
+    } finally {
+      isSaving.value = false;
     }
   }
 }

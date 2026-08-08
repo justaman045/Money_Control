@@ -15,12 +15,15 @@ class IapService {
 
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
+  Timer? _watchdog;
 
   final RxList<ProductDetails> products = <ProductDetails>[].obs;
   final RxBool isAvailable = false.obs;
   final RxBool isLoading = false.obs;
 
   Future<void> init() async {
+    // Never let a stale value from a previous session lock the buy button.
+    isLoading.value = false;
     isAvailable.value = await _iap.isAvailable();
     if (!isAvailable.value) return;
 
@@ -37,6 +40,24 @@ class IapService {
     products.assignAll(response.productDetails);
   }
 
+  /// Force-clears [isLoading] if a store call never resolves (emulator without
+  /// Play billing, unsigned debug build, web without a configured merchant, iOS
+  /// without StoreKit products). On several platforms the buy future completes
+  /// at initiation and the real outcome arrives via the purchase stream, which
+  /// may never emit when the store is unavailable — so a watchdog, not a future
+  /// timeout, is what guarantees the subscribe button recovers.
+  void _armWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = Timer(const Duration(seconds: 30), () {
+      isLoading.value = false;
+    });
+  }
+
+  void _cancelWatchdog() {
+    _watchdog?.cancel();
+    _watchdog = null;
+  }
+
   Future<void> buySubscription(String productId) async {
     final product = products.firstWhereOrNull((p) => p.id == productId);
     if (product == null) {
@@ -46,21 +67,25 @@ class IapService {
       return;
     }
     isLoading.value = true;
+    _armWatchdog();
     final param = PurchaseParam(productDetails: product);
     try {
       await _iap.buyNonConsumable(purchaseParam: param);
     } catch (e) {
       ErrorHandler.showError('Failed to initiate purchase. Please try again.');
     } finally {
+      _cancelWatchdog();
       isLoading.value = false;
     }
   }
 
   Future<void> restorePurchases() async {
     isLoading.value = true;
+    _armWatchdog();
     try {
       await _iap.restorePurchases();
     } finally {
+      _cancelWatchdog();
       isLoading.value = false;
     }
   }
@@ -93,11 +118,13 @@ class IapService {
         }
       }
     } finally {
+      _cancelWatchdog();
       isLoading.value = false;
     }
   }
 
   void dispose() {
+    _cancelWatchdog();
     _purchaseSub?.cancel();
   }
 }

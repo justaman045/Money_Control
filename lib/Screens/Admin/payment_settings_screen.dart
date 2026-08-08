@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:get/get.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Services/payment_config_service.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class PaymentSettingsScreen extends StatefulWidget {
   const PaymentSettingsScreen({super.key});
@@ -35,18 +35,18 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
 
   Future<void> _save() async {
     if (_mode == 'upi' && _upiCtrl.text.trim().isEmpty) {
-      Get.snackbar('Missing UPI ID', 'Please enter your UPI ID before switching to UPI mode.',
-          backgroundColor: Colors.redAccent, colorText: Colors.white);
+      ErrorHandler.showError(
+        'Please enter your UPI ID before switching to UPI mode.',
+        title: 'Missing UPI ID',
+      );
       return;
     }
     setState(() => _saving = true);
     try {
       await PaymentConfigService.to.save(mode: _mode, upi: _upiCtrl.text.trim());
-      Get.snackbar('Saved', 'Payment settings updated.',
-          backgroundColor: Colors.green, colorText: Colors.white);
+      ErrorHandler.showSuccess('Payment settings updated.', title: 'Saved');
     } catch (e) {
-      Get.snackbar('Error', 'Failed to save: $e',
-          backgroundColor: Colors.redAccent, colorText: Colors.white);
+      ErrorHandler.showError('Failed to save: $e', title: 'Error');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -68,12 +68,17 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text('Payment Settings',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          title: Text('Payment Settings',
+              style: TextStyle(
+                  color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                  fontWeight: FontWeight.bold)),
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(
+              Icons.arrow_back,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -85,7 +90,10 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-              Text('Payment Mode', style: TextStyle(color: Colors.white70, fontSize: 13.sp)),
+              Text('Payment Mode',
+                  style: TextStyle(
+                      color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                      fontSize: 13.sp)),
               SizedBox(height: 12.h),
               _buildModeCard(
                 mode: 'google_play',
@@ -104,18 +112,29 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
               ),
               SizedBox(height: 32.h),
               if (_mode == 'upi') ...[
-                Text('Your UPI ID', style: TextStyle(color: Colors.white70, fontSize: 13.sp)),
+                Text('Your UPI ID',
+                    style: TextStyle(
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.lightTextSecondary,
+                        fontSize: 13.sp)),
                 SizedBox(height: 8.h),
                 GlassContainer(
                   padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 4.h),
                   borderRadius: BorderRadius.circular(14.r),
                   child: TextField(
                     controller: _upiCtrl,
-                    style: TextStyle(color: Colors.white, fontSize: 16.sp),
+                    style: TextStyle(
+                        color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                        fontSize: 16.sp),
                     decoration: InputDecoration(
                       border: InputBorder.none,
                       hintText: 'yourname@upi',
-                      hintStyle: TextStyle(color: Colors.white38, fontSize: 16.sp),
+                      hintStyle: TextStyle(
+                          color: isDark
+                              ? Colors.white38
+                              : AppColors.lightTextTertiary,
+                          fontSize: 16.sp),
                       prefixIcon: const Icon(Icons.alternate_email, color: Colors.cyanAccent),
                     ),
                   ),
@@ -123,7 +142,11 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
                 SizedBox(height: 8.h),
                 Text(
                   'Users will be asked to pay this UPI ID and enter the resulting transaction ID.',
-                  style: TextStyle(color: Colors.white38, fontSize: 12.sp),
+                  style: TextStyle(
+                      color: isDark
+                          ? Colors.white38
+                          : AppColors.lightTextTertiary,
+                      fontSize: 12.sp),
                 ),
                 SizedBox(height: 32.h),
               ],
@@ -161,6 +184,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
     required Color color,
   }) {
     final selected = _mode == mode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => setState(() => _mode = mode),
       child: GlassContainer(
@@ -174,7 +198,15 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
                 color: color.withValues(alpha: selected ? 0.2 : 0.05),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: selected ? color : Colors.white38, size: 24.sp),
+              child: Icon(
+                icon,
+                color: selected
+                    ? color
+                    : isDark
+                        ? Colors.white38
+                        : AppColors.lightTextTertiary,
+                size: 24.sp,
+              ),
             ),
             SizedBox(width: 16.w),
             Expanded(
@@ -183,12 +215,22 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
                 children: [
                   Text(label,
                       style: TextStyle(
-                          color: selected ? Colors.white : Colors.white60,
+                          color: selected
+                              ? isDark
+                                  ? Colors.white
+                                  : AppColors.lightTextPrimary
+                              : isDark
+                                  ? Colors.white60
+                                  : AppColors.lightTextSecondary,
                           fontSize: 15.sp,
                           fontWeight: FontWeight.bold)),
                   SizedBox(height: 4.h),
                   Text(subtitle,
-                      style: TextStyle(color: Colors.white38, fontSize: 12.sp)),
+                      style: TextStyle(
+                          color: isDark
+                              ? Colors.white38
+                              : AppColors.lightTextTertiary,
+                          fontSize: 12.sp)),
                 ],
               ),
             ),
@@ -198,7 +240,9 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
               height: 22.w,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: selected ? color : Colors.white24, width: 2),
+                border: Border.all(
+                    color: selected ? color : isDark ? Colors.white24 : AppColors.lightBorder,
+                    width: 2),
                 color: selected ? color : Colors.transparent,
               ),
               child: selected ? Icon(Icons.check, color: Colors.black, size: 14.sp) : null,

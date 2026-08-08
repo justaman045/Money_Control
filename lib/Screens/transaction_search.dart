@@ -7,11 +7,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_animate/flutter_animate.dart'; // Animation
 
 import 'package:money_control/Models/transaction.dart';
+import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Components/methods.dart';
 import 'package:money_control/Screens/transaction_details.dart';
 import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Components/empty_state.dart'; // Empty State
 import 'package:money_control/Components/colors.dart';
+import 'package:money_control/Utils/animation.dart';
 import 'package:money_control/Utils/responsive.dart';
 
 class TransactionSearchPage extends StatefulWidget {
@@ -61,18 +63,26 @@ class _TransactionSearchPageState extends State<TransactionSearchPage> {
     });
 
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user.email)
-          .collection("transactions")
-          .orderBy("date", descending: true)
-          .get();
-
-      final List<TransactionModel> all = snap.docs
-          .map((d) => TransactionModel.fromMap(d.id, d.data()))
-          .toList();
-
       final q = query.toLowerCase();
+
+      // Search in-memory first — the controller keeps a live snapshot of every
+      // transaction, so no extra Firestore fetch is needed on a slow network.
+      List<TransactionModel> all = [];
+      if (Get.isRegistered<TransactionController>()) {
+        all = Get.find<TransactionController>().transactions;
+      }
+      if (all.isEmpty) {
+        final snap = await FirebaseFirestore.instance
+            .collection("users")
+            .doc(user.email)
+            .collection("transactions")
+            .orderBy("date", descending: true)
+            .get();
+
+        all = snap.docs
+            .map((d) => TransactionModel.fromMap(d.id, d.data()))
+            .toList();
+      }
 
       final matched = all.where((tx) {
         return (tx.recipientName.toLowerCase().contains(q)) ||
@@ -214,7 +224,7 @@ class _TransactionSearchPageState extends State<TransactionSearchPage> {
                                 Icon(
                                   Icons.manage_search_rounded,
                                   size: 80.sp,
-                                  color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.07),
+                                  color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightActionSurface,
                                 ),
                                 SizedBox(height: 16.h),
                                 Text(
@@ -239,7 +249,8 @@ class _TransactionSearchPageState extends State<TransactionSearchPage> {
                             tx.recipientId ==
                             FirebaseAuth.instance.currentUser?.uid;
 
-                        return Container(
+                        return animatedItem(
+                              Container(
                               margin: EdgeInsets.symmetric(
                                 horizontal: 16.w,
                                 vertical: 6.h,
@@ -329,11 +340,10 @@ class _TransactionSearchPageState extends State<TransactionSearchPage> {
                                   ),
                                 ],
                               ),
-                            )
-                            .animate(delay: (i * 50).ms)
-                            .fadeIn(duration: 300.ms)
-                            .slideY(begin: 0.1, end: 0, curve: Curves.easeOut)
-                            .onTap(() {
+                            ),
+                            i,
+                            slide: true,
+                          ).onTap(() {
                               // View Details
                               Get.to(
                                 () => TransactionResultScreen(

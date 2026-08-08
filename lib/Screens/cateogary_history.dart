@@ -87,7 +87,8 @@ class _CategoryTransactionsScreenState
               ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          icon: Icon(Icons.arrow_back_ios_new,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Text(
@@ -95,7 +96,7 @@ class _CategoryTransactionsScreenState
               ? "${widget.categoryName}: ${_formatDateRange(widget.startDate!, widget.endDate!)}"
               : "Transactions: ${widget.categoryName}",
           style: TextStyle(
-            color: Colors.white,
+            color: isDark ? Colors.white : AppColors.lightTextPrimary,
             fontWeight: FontWeight.bold,
             fontSize: 18.sp,
           ),
@@ -146,12 +147,15 @@ class _CategoryTransactionsScreenState
                     Icon(
                       Icons.receipt_long_rounded,
                       size: 60.sp,
-                      color: Colors.white24,
+                      color: isDark ? Colors.white24 : AppColors.lightBorder,
                     ),
                     SizedBox(height: 16.h),
                     Text(
                       "No transactions found.",
-                      style: TextStyle(color: Colors.white38, fontSize: 16.sp),
+                      style: TextStyle(
+                          color:
+                              isDark ? Colors.white38 : AppColors.lightTextTertiary,
+                          fontSize: 16.sp),
                     ),
                   ],
                 ),
@@ -201,17 +205,23 @@ class _CategoryTransactionsScreenState
                           vertical: 12.h,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.05),
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : AppColors.lightSurfaceCard,
                           borderRadius: BorderRadius.circular(20.r),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : AppColors.lightBorder,
                           ),
                         ),
                         child: IgnorePointer(
                           child: TxTile(
                             tx: tx,
                             received: received,
-                            textColor: Colors.white,
+                            textColor: isDark
+                                ? Colors.white
+                                : AppColors.lightTextPrimary,
                             receivedColor: const Color(0xFF00E676),
                             sentColor: const Color(0xFFFF1744),
                           ),

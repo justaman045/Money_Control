@@ -76,7 +76,6 @@ class TransactionRepository {
     var query = _userTransactionsRef.orderBy('createdAt', descending: true);
     if (limit != null) query = query.limit(limit);
     return query.snapshots()
-        .handleError((e) => debugPrint('TransactionRepository stream error: $e'))
         .map((snapshot) {
           return snapshot.docs.map((doc) {
             return TransactionModel.fromMap(
@@ -104,7 +103,6 @@ class TransactionRepository {
 
   Stream<List<CategoryModel>> getCategoriesStream() {
     return _userCategoriesRef.snapshots()
-        .handleError((e) => debugPrint('CategoriesStream error: $e'))
         .map((snapshot) {
       return snapshot.docs.map((doc) {
         return CategoryModel.fromMap(

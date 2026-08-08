@@ -8,6 +8,7 @@ import 'package:money_control/Controllers/currency_controller.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Services/iap_service.dart';
 import 'package:money_control/Services/payment_config_service.dart';
+import 'package:money_control/Services/error_handler.dart';
 import 'package:money_control/main.dart' show rootScaffoldMessengerKey;
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Utils/responsive.dart';
@@ -26,11 +27,31 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   final _txnController = TextEditingController();
   String? _upiTxnId;
   bool _upiSubmitting = false;
+  final _paymentKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final args = Get.arguments;
+    if (args is Map && args['scrollToPayment'] == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToPayment());
+    }
+  }
 
   @override
   void dispose() {
     _txnController.dispose();
     super.dispose();
+  }
+
+  Future<void> _scrollToPayment() async {
+    final ctx = _paymentKey.currentContext;
+    if (ctx == null) return;
+    await Scrollable.ensureVisible(
+      ctx,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
@@ -277,7 +298,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                       width: double.infinity,
                       padding: EdgeInsets.all(20.w),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+                        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
                         borderRadius: BorderRadius.circular(20.r),
                         border: Border.all(
                           color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.5),
@@ -722,10 +743,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
                   SizedBox(height: 40.h),
 
-                  Obx(() {
-                    final isUpiMode = !kIsWeb && PaymentConfigService.to.paymentMode.value == 'upi';
-                    return isUpiMode ? _buildUpiFlow(isDark) : _buildIapFlow(isDark);
-                  }),
+                  KeyedSubtree(
+                    key: _paymentKey,
+                    child: Obx(() {
+                      final isUpiMode = !kIsWeb && PaymentConfigService.to.paymentMode.value == 'upi';
+                      return isUpiMode ? _buildUpiFlow(isDark) : _buildIapFlow(isDark);
+                    }),
+                  ),
                   SizedBox(height: 20.h),
                     ],
                   ),
@@ -795,7 +819,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.cyan.withValues(alpha: 0.15)
-              : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
+              : (isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard),
           borderRadius: BorderRadius.circular(20.r),
           border: Border.all(
             color: isSelected
@@ -947,9 +971,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                         icon: Icon(Icons.copy, color: Colors.cyanAccent, size: 18.sp),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: upiId));
-                          Get.snackbar('Copied', 'UPI ID copied to clipboard.',
-                              backgroundColor: Colors.cyanAccent.withValues(alpha: 0.2),
-                              colorText: isDark ? Colors.white : Colors.black, snackPosition: SnackPosition.BOTTOM);
+                          ErrorHandler.showSuccess('UPI ID copied to clipboard.');
                         },
                       ),
                   ],
@@ -1070,7 +1092,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     try {
       final response = await _upiChannel.invokeMethod<String>('pay', {
         if (pkg.isNotEmpty) 'packageName': pkg,
-        'pa': upiId,
+        'payeeVpa': upiId,
         'amount': amount,
         'payeeName': 'WealthSync',
         'note': 'WealthSync Pro - $_selectedPlan',
@@ -1128,6 +1150,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _buySubscription() async {
     final isUpiMode = PaymentConfigService.to.paymentMode.value == 'upi';
     if (isUpiMode) {
+      if (_paymentKey.currentContext != null) {
+        await _scrollToPayment();
+        return;
+      }
       Get.to(() => const SubscriptionScreen(), arguments: {'scrollToPayment': true});
       return;
     }

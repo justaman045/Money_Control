@@ -54,6 +54,7 @@ ios/Runner/GoogleService-Info.plist
 *.keystore
 local.properties
 firebase.json
+.firebaserc
 service_account.json
 *.base64
 

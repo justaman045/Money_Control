@@ -13,7 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Controllers/profile_controller.dart';
-import 'package:money_control/Screens/splashscreen.dart';
+import 'package:money_control/Controllers/auth_controller.dart';
 import 'package:money_control/Screens/Settings/general_settings.dart';
 import 'package:money_control/Screens/Settings/security_settings.dart';
 import 'package:money_control/Screens/Settings/data_support_settings.dart';
@@ -27,12 +27,12 @@ import 'package:money_control/Screens/lent_money_screen.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:money_control/Services/referral_service.dart';
-import 'package:money_control/Services/sms_service.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:share_plus/share_plus.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final bool showNavigation;
+  const SettingsScreen({super.key, this.showNavigation = true});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -78,7 +78,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return AdaptiveScaffold(
       currentIndex: 4,
-      isVisible: _isBottomBarVisible,
+      isVisible: widget.showNavigation ? _isBottomBarVisible : null,
+      showNavigation: widget.showNavigation,
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       decoration: BoxDecoration(
@@ -405,9 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       width: double.infinity,
       child: TextButton(
         onPressed: () async {
-          SmsService.resetCache();
-          await FirebaseAuth.instance.signOut();
-          Get.offAll(() => const AnimatedSplashScreen());
+          await Get.find<AuthController>().logout();
         },
         style: TextButton.styleFrom(
           padding: EdgeInsets.symmetric(vertical: 16.h),
@@ -572,6 +571,9 @@ class _InviteFriendsCardState extends State<_InviteFriendsCard> {
         _count = (data['referralCount'] as int?) ?? 0;
         _loading = false;
       });
+    }, onError: (e) {
+      debugPrint('InviteFriends stream error: $e');
+      if (mounted) setState(() => _loading = false);
     });
   }
 
@@ -585,21 +587,21 @@ class _InviteFriendsCardState extends State<_InviteFriendsCard> {
   static Future<String> _githubApkUrl() async {
     try {
       final resp = await http.get(Uri.parse(
-        'https://raw.githubusercontent.com/justaman045/Money_Control/master/app_version.json',
+        'https://raw.githubusercontent.com/justaman045/WealthSync/master/app_version.json',
       ));
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        if (data is! Map) return 'https://github.com/justaman045/Money_Control/releases/latest';
+        if (data is! Map) return 'https://github.com/justaman045/WealthSync/releases/latest';
         final version = data['latest_version'] as String?;
         if (version != null && version.isNotEmpty) {
-          return 'https://github.com/justaman045/Money_Control/releases/download/v$version/app-release.apk';
+          return 'https://github.com/justaman045/WealthSync/releases/download/v$version/app-release.apk';
         }
       }
     } catch (e) {
       debugPrint("Latest release fetch error: $e");
     }
     // Fallback: link to releases page if version fetch fails
-    return 'https://github.com/justaman045/Money_Control/releases/latest';
+    return 'https://github.com/justaman045/WealthSync/releases/latest';
   }
 
   Future<void> _share() async {
@@ -637,6 +639,7 @@ class _InviteFriendsCardState extends State<_InviteFriendsCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: _share,
@@ -665,7 +668,12 @@ class _InviteFriendsCardState extends State<_InviteFriendsCard> {
             SizedBox(width: 14.w),
             Expanded(
               child: _loading
-                  ? Text("Loading...", style: TextStyle(color: Colors.white54, fontSize: 13.sp))
+                  ? Text("Loading...",
+                      style: TextStyle(
+                          color: isDark
+                              ? Colors.white54
+                              : AppColors.lightTextSecondary,
+                          fontSize: 13.sp))
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -682,7 +690,11 @@ class _InviteFriendsCardState extends State<_InviteFriendsCard> {
                           children: [
                             Text(
                               "Your code: ",
-                              style: TextStyle(fontSize: 12.sp, color: Colors.white60),
+                              style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: isDark
+                                      ? Colors.white60
+                                      : AppColors.lightTextSecondary),
                             ),
                             Container(
                               padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),

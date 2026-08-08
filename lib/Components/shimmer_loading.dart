@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:money_control/Components/glass_container.dart';
+import 'package:money_control/Services/performance_controller.dart';
 
 class ShimmerLoading extends StatelessWidget {
   final Widget child;
@@ -9,16 +11,24 @@ class ShimmerLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Shimmer.fromColors(
-      baseColor: isDark
-          ? Colors.white.withValues(alpha: 0.05)
-          : Colors.grey[300]!,
-      highlightColor: isDark
-          ? Colors.white.withValues(alpha: 0.1)
-          : Colors.grey[100]!,
-      child: child,
-    );
+    // Obx: when lite mode is toggled off in Settings the shimmer loop resumes
+    // on the next rebuild.
+    return Obx(() {
+      // Lite mode: render the placeholder statically instead of running the
+      // shimmer animation loop (avoids a per-frame animation on low-end GPUs).
+      if (PerformanceController.to.liteMode.value) return child;
+
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Shimmer.fromColors(
+        baseColor: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.grey[300]!,
+        highlightColor: isDark
+            ? Colors.white.withValues(alpha: 0.1)
+            : Colors.grey[100]!,
+        child: child,
+      );
+    });
   }
 }
 

@@ -146,7 +146,10 @@ class _CreditCardDetailScreenState extends State<CreditCardDetailScreen> {
             if (docs.isEmpty) {
               if (!_syncedEmpty) {
                 _syncedEmpty = true;
-                WealthService.updateAsset('creditCard', 0);
+                // Firestore write during build is a side effect — defer it.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) WealthService.updateAsset('creditCard', 0);
+                });
               }
               return _buildEmpty(isDark);
             }
@@ -348,16 +351,21 @@ class _CreditCardDetailScreenState extends State<CreditCardDetailScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.credit_card_off_outlined,
-              size: 72.sp, color: Colors.white24),
+              size: 72.sp,
+              color: isDark ? Colors.white24 : AppColors.lightBorder),
           SizedBox(height: 16.h),
           Text(
             "No credit cards added",
-            style: TextStyle(color: Colors.white54, fontSize: 16.sp),
+            style: TextStyle(
+                color: isDark ? Colors.white54 : AppColors.lightTextSecondary,
+                fontSize: 16.sp),
           ),
           SizedBox(height: 8.h),
           Text(
             "Tap + to track your card outstanding",
-            style: TextStyle(color: Colors.white38, fontSize: 13.sp),
+            style: TextStyle(
+                color: isDark ? Colors.white38 : AppColors.lightTextTertiary,
+                fontSize: 13.sp),
           ),
         ],
       ),
@@ -494,7 +502,7 @@ class _AddSheetState extends State<_AddSheet> {
           children: [
             Text(widget.title,
                 style: TextStyle(
-                    color: Colors.white,
+                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 18.sp)),
             SizedBox(height: 16.h),
@@ -511,12 +519,16 @@ class _AddSheetState extends State<_AddSheet> {
                   inputFormatters: f.keyboardType == TextInputType.number
                       ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))]
                       : null,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(
+                      color: isDark ? Colors.white : AppColors.lightTextPrimary),
                   decoration: InputDecoration(
                     labelText: f.label,
-                    labelStyle: const TextStyle(color: Colors.white54),
+                    labelStyle: TextStyle(
+                        color: isDark ? Colors.white54 : AppColors.lightTextSecondary),
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.08),
+                    fillColor: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.04),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12.r),
                       borderSide: BorderSide.none,

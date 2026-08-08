@@ -7,6 +7,7 @@ import android.content.Intent
 import android.app.PendingIntent
 import android.net.Uri
 import android.widget.RemoteViews
+import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 
 class MoneyControlWidget : AppWidgetProvider() {
@@ -43,14 +44,13 @@ class MoneyControlWidget : AppWidgetProvider() {
             )
             views.setOnClickPendingIntent(R.id.widget_root, pendingOpen)
 
-            // Tap "+ Add" → open add transaction screen
-            val addIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                data = Uri.parse("moneycontrol://add_transaction")
-            }
-            val pendingAdd = PendingIntent.getActivity(
-                context, 1, addIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            // Tap "+ Add" → open add transaction screen. Uses the home_widget
+            // launch action so HomeWidget.initiallyLaunchedFromHomeWidget() and
+            // HomeWidget.widgetClicked() deliver the deep link to Flutter.
+            val pendingAdd = HomeWidgetLaunchIntent.getActivity(
+                context,
+                MainActivity::class.java,
+                Uri.parse("homeWidget://add_transaction")
             )
             views.setOnClickPendingIntent(R.id.widget_tap_hint, pendingAdd)
 

@@ -391,7 +391,7 @@ class _AutoTagRulesScreenState extends State<AutoTagRulesScreen> {
                   child: Chip(
                     label: Text(kw, style: TextStyle(fontSize: 12.sp, color: isDefault ? (isDark ? Colors.white70 : AppColors.lightTextSecondary) : (isDark ? Colors.white : AppColors.lightTextPrimary))),
                     backgroundColor: isDefault
-                        ? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.07))
+                        ? (isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightActionSurface)
                         : AppColors.primary.withValues(alpha: 0.3),
                     side: BorderSide(
                       color: isDefault ? (isDark ? Colors.white.withValues(alpha: 0.15) : AppColors.lightBorder.withValues(alpha: 0.15)) : AppColors.primary.withValues(alpha: 0.5),

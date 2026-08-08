@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Components/glass_container.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -27,12 +28,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _sendResetEmail() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      Get.snackbar(
-        'Error',
-        'Please enter your email address',
-        backgroundColor: AppColors.error,
-        colorText: Colors.white,
-      );
+      ErrorHandler.showError('Please enter your email address');
       return;
     }
 
@@ -48,8 +44,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       } else if (e.code == 'invalid-email') {
         message = 'Please enter a valid email address.';
       }
-      Get.snackbar('Error', message,
-          backgroundColor: AppColors.error, colorText: Colors.white);
+      ErrorHandler.showError(message);
     }
   }
 

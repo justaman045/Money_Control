@@ -8,6 +8,7 @@ import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:money_control/Components/glass_container.dart';
+import 'package:money_control/Components/staggered_slide_fade.dart';
 import 'package:money_control/Utils/responsive.dart';
 import 'package:money_control/Components/pro_lock_widget.dart';
 import 'package:money_control/Components/adaptive_scaffold.dart';
@@ -30,7 +31,8 @@ import 'package:money_control/Components/colors.dart';
 import 'package:flutter/rendering.dart' as rendering;
 
 class AnalyticsScreen extends StatefulWidget {
-  const AnalyticsScreen({super.key});
+  final bool showNavigation;
+  const AnalyticsScreen({super.key, this.showNavigation = true});
 
   @override
   State<AnalyticsScreen> createState() => _AnalyticsScreenState();
@@ -107,8 +109,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _loadCalendarEvents() async {
     final now = DateTime.now();
-    final displayMonth = DateTime(now.year, now.month + _calendarMonthOffset, 1);
-    final daysInMonth = DateTime(displayMonth.year, displayMonth.month + 1, 0).day;
+    final displayMonth = DateTime(
+      now.year,
+      now.month + _calendarMonthOffset,
+      1,
+    );
+    final daysInMonth = DateTime(
+      displayMonth.year,
+      displayMonth.month + 1,
+      0,
+    ).day;
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
 
     final Map<int, List<String>> events = {};
@@ -118,7 +128,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     int? salaryDay;
     for (final tx in _transactionController.transactions) {
       if (tx.recipientId != currentUid) continue;
-      if (tx.date.year != displayMonth.year || tx.date.month != displayMonth.month) continue;
+      if (tx.date.year != displayMonth.year ||
+          tx.date.month != displayMonth.month) {
+        continue;
+      }
       if (tx.amount.abs() > maxCredit) {
         maxCredit = tx.amount.abs();
         salaryDay = tx.date.day;
@@ -142,7 +155,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     // dots appear on the correct day for any displayed month, not just next due month
     try {
       final payments = await RecurringService().getPayments().first;
-      final lastDayOfDisplay = DateTime(displayMonth.year, displayMonth.month + 1, 0);
+      final lastDayOfDisplay = DateTime(
+        displayMonth.year,
+        displayMonth.month + 1,
+        0,
+      );
       for (final p in payments) {
         if (!p.isActive) continue;
         if (p.startDate.isAfter(lastDayOfDisplay)) continue;
@@ -426,15 +443,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _shareReport() async {
     final SubscriptionController subscriptionController = Get.find();
     if (!subscriptionController.isPro) {
-      _showProLockModal("Share Report", "Share your monthly report as an image.");
+      _showProLockModal(
+        "Share Report",
+        "Share your monthly report as an image.",
+      );
       return;
     }
     try {
-      final Uint8List? image = await _screenshotController.capture(pixelRatio: 2.0);
+      final Uint8List? image = await _screenshotController.capture(
+        pixelRatio: 2.0,
+      );
       if (image == null) return;
       await SharePlus.instance.share(
         ShareParams(
-          files: [XFile.fromData(image, name: 'money_control_report.png', mimeType: 'image/png')],
+          files: [
+            XFile.fromData(
+              image,
+              name: 'money_control_report.png',
+              mimeType: 'image/png',
+            ),
+          ],
           text: 'My $_periodLabel Financial Report — Money Control',
         ),
       );
@@ -446,7 +474,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Future<void> _exportTaxSummary() async {
     final SubscriptionController subscriptionController = Get.find();
     if (!subscriptionController.isPro) {
-      _showProLockModal("Tax Summary", "Export categorized annual tax summary PDF.");
+      _showProLockModal(
+        "Tax Summary",
+        "Export categorized annual tax summary PDF.",
+      );
       return;
     }
     await ExportService.exportTaxSummaryPDF(
@@ -460,7 +491,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     showModalBottomSheet(
       context: context,
       constraints: BoxConstraints(maxWidth: Responsive.sheetMaxWidth(context)),
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor: isDark
+          ? AppColors.darkBackground
+          : AppColors.lightBackground,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
       ),
@@ -480,7 +513,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final isDark = _cachedIsDark;
     return AdaptiveScaffold(
       currentIndex: 1,
-      isVisible: _isBottomBarVisible,
+      isVisible: widget.showNavigation ? _isBottomBarVisible : null,
+      showNavigation: widget.showNavigation,
       backgroundColor: Colors.transparent,
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -490,99 +524,124 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         ),
       ),
       appBar: AppBar(
-          title: Text(
-            "Analytics & Reports",
-            style: TextStyle(
-              color: isDark ? Colors.white : AppColors.lightTextPrimary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          iconTheme: IconThemeData(
+        title: Text(
+          "Analytics & Reports",
+          style: TextStyle(
             color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            fontWeight: FontWeight.bold,
           ),
-          actions: [
-            PopupMenuButton<String>(
-              icon: Icon(
-                Icons.more_vert,
-                color: isDark ? Colors.white : AppColors.lightTextPrimary,
-              ),
-              color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-              surfaceTintColor: isDark ? AppColors.darkSurface : Colors.white,
-              onSelected: (v) {
-                if (v == "csv") {
-                  _exportCsv();
-                } else if (v == "pdf") {
-                  _exportPdf();
-                } else if (v == "tax") {
-                  _exportTaxSummary();
-                } else if (v == "share") {
-                  _shareReport();
-                }
-              },
-              itemBuilder: (ctx) {
-                final c = isDark ? Colors.white : AppColors.lightTextPrimary;
-                return [
-                  PopupMenuItem(
-                    value: "share",
-                    child: Row(children: [
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: IconThemeData(
+          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: Icon(
+              Icons.more_vert,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            ),
+            color: isDark
+                ? AppColors.darkBackground
+                : AppColors.lightBackground,
+            surfaceTintColor: isDark ? AppColors.darkSurface : Colors.white,
+            onSelected: (v) {
+              if (v == "csv") {
+                _exportCsv();
+              } else if (v == "pdf") {
+                _exportPdf();
+              } else if (v == "tax") {
+                _exportTaxSummary();
+              } else if (v == "share") {
+                _shareReport();
+              }
+            },
+            itemBuilder: (ctx) {
+              final c = isDark ? Colors.white : AppColors.lightTextPrimary;
+              return [
+                PopupMenuItem(
+                  value: "share",
+                  child: Row(
+                    children: [
                       Icon(Icons.share_outlined, color: c, size: 18.sp),
                       SizedBox(width: 10.w),
                       Text("Share Report", style: TextStyle(color: c)),
-                    ]),
+                    ],
                   ),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
-                    value: "csv",
-                    child: Row(children: [
+                ),
+                PopupMenuDivider(),
+                PopupMenuItem(
+                  value: "csv",
+                  child: Row(
+                    children: [
                       Icon(Icons.table_chart_outlined, color: c, size: 18.sp),
                       SizedBox(width: 10.w),
                       Text("Export CSV", style: TextStyle(color: c)),
-                    ]),
+                    ],
                   ),
-                  PopupMenuItem(
-                    value: "pdf",
-                    child: Row(children: [
-                      Icon(Icons.picture_as_pdf_outlined, color: c, size: 18.sp),
+                ),
+                PopupMenuItem(
+                  value: "pdf",
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.picture_as_pdf_outlined,
+                        color: c,
+                        size: 18.sp,
+                      ),
                       SizedBox(width: 10.w),
                       Text("Export PDF", style: TextStyle(color: c)),
-                    ]),
+                    ],
                   ),
-                  PopupMenuItem(
-                    value: "tax",
-                    child: Row(children: [
+                ),
+                PopupMenuItem(
+                  value: "tax",
+                  child: Row(
+                    children: [
                       Icon(Icons.receipt_long_outlined, color: c, size: 18.sp),
                       SizedBox(width: 10.w),
                       Text("Tax Summary PDF", style: TextStyle(color: c)),
-                    ]),
+                    ],
                   ),
-                ];
-              },
-            ),
-          ],
-        ),
-        extendBody: true,
-        body: NotificationListener<UserScrollNotification>(
-          onNotification: (notification) {
-            if (notification.direction == rendering.ScrollDirection.reverse) {
-              if (_isBottomBarVisible.value) _isBottomBarVisible.value = false;
-            } else if (notification.direction ==
-                rendering.ScrollDirection.forward) {
-              if (!_isBottomBarVisible.value) _isBottomBarVisible.value = true;
-            }
-            return true;
-          },
-          child: _loading
-              ? const Center(
-                  child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
-                )
-              : Screenshot(
-                  controller: _screenshotController,
+                ),
+              ];
+            },
+          ),
+        ],
+      ),
+      extendBody: true,
+      body: NotificationListener<UserScrollNotification>(
+        onNotification: (notification) {
+          if (notification.direction == rendering.ScrollDirection.reverse) {
+            if (_isBottomBarVisible.value) _isBottomBarVisible.value = false;
+          } else if (notification.direction ==
+              rendering.ScrollDirection.forward) {
+            if (!_isBottomBarVisible.value) _isBottomBarVisible.value = true;
+          }
+          return true;
+        },
+        child: _loading
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+              )
+            : Screenshot(
+                controller: _screenshotController,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isDark
+                          ? AppColors.darkGradient
+                          : AppColors.lightGradient,
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
                   child: _buildBody(),
                 ),
-        ),
+              ),
+      ),
     );
   }
 
@@ -593,273 +652,313 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 100.h),
       child: Center(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
+          constraints: BoxConstraints(
+            maxWidth: Responsive.contentMaxWidth(context),
+          ),
           child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ------------ FILTER SECTION ------------------
-          _StaggeredSlideFade(
-            delay: 0,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : AppColors.lightSurface,
-                borderRadius: BorderRadius.circular(24.r),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.1)
-                      : AppColors.lightBorder,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withValues(alpha: 0.1)
-                        : Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 15.r,
-                    offset: Offset(0, 8.h),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Data Filters",
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.all(8.w),
-                        decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF00E5FF,
-                          ).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(10.r),
-                        ),
-                        child: Icon(
-                          Icons.filter_list,
-                          size: 18.sp,
-                          color: const Color(0xFF00E5FF),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 20.h),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: _dropdown<String>(
-                          label: "Period",
-                          value: _period,
-                          items: _periodOptions,
-                          onChanged: (v) async {
-                            final SubscriptionController subCtrl = Get.find();
-                            if (!subCtrl.isPro && v != "This Month") {
-                              _showProLockModal(
-                                "Advanced Analytics",
-                                "Unlock full history and custom date ranges.",
-                              );
-                              return;
-                            }
-                            if (v == "Custom Range") {
-                              final picked = await showDateRangePicker(
-                                context: context,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime.now(),
-                                initialDateRange: _customRange ?? DateTimeRange(
-                                  start: DateTime.now().subtract(const Duration(days: 30)),
-                                  end: DateTime.now(),
-                                ),
-                              );
-                               if (picked == null) return;
-                               if (!mounted) return;
-                               setState(() {
-                                _customRange = picked;
-                                _period = v;
-                                _filteredCache = null;
-                              });
-                            } else {
-                              setState(() { _period = v; _filteredCache = null; });
-                            }
-                          },
-                        ),
-                      ),
-                      SizedBox(width: 16.w),
-                      Expanded(
-                        child: _dropdown<String?>(
-                          label: "Category",
-                          value: _categoryFilter,
-                          items: [null, ...categories],
-                          format: (v) => v ?? "All Categories",
-                          onChanged: (v) => setState(() { _categoryFilter = v; _filteredCache = null; }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          SizedBox(height: 30.h),
-
-          // -------- Summary Cards (Icons + Gradients) ----------
-          _StaggeredSlideFade(
-            delay: 100,
-            child: Text(
-              "Financial Summary",
-              style: TextStyle(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          SizedBox(height: 16.h),
-          _StaggeredSlideFade(
-            delay: 150,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _summary(
-                    "Income",
-                    totalIncome,
-                    const Color(0xFF00E5FF),
-                    Icons.arrow_upward_rounded,
-                    onTap: () => Get.to(() => TransactionHistoryScreen(initialTab: 1, filterMonth: DateTime.now())),
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: _summary(
-                    "Expenses",
-                    totalExpense,
-                    const Color(0xFFFF2975),
-                    Icons.arrow_downward_rounded,
-                    onTap: () => Get.to(() => TransactionHistoryScreen(initialTab: 2, filterMonth: DateTime.now())),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 16.h),
-          _StaggeredSlideFade(
-            delay: 200,
-            child: _summary(
-              "Net Balance",
-              netBalance,
-              netBalance >= 0
-                  ? const Color(0xFF00E5FF)
-                  : const Color(0xFFFF2975),
-              Icons.account_balance_wallet_rounded,
-              isWide: true,
-              onTap: () => Get.to(() => TransactionHistoryScreen(initialTab: 0, filterMonth: DateTime.now())),
-            ),
-          ),
-
-          SizedBox(height: 24.h),
-
-          _StaggeredSlideFade(
-            delay: 250,
-            child: Center(
-              child: GestureDetector(
-                onTap: () {
-                  Get.to(() => const AnalyticsTrendsScreen());
-                },
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ------------ FILTER SECTION ------------------
+              StaggeredSlideFade(
+                delay: 0,
                 child: Container(
                   padding: EdgeInsets.symmetric(
-                    horizontal: 24.w,
-                    vertical: 12.h,
+                    horizontal: 20.w,
+                    vertical: 20.h,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(30.r),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : AppColors.lightSurface,
+                    borderRadius: BorderRadius.circular(24.r),
                     border: Border.all(
-                      color: const Color(0xFF6C63FF).withValues(alpha: 0.5),
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : AppColors.lightBorder,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isDark
+                            ? Colors.black.withValues(alpha: 0.1)
+                            : Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 15.r,
+                        offset: Offset(0, 8.h),
+                      ),
+                    ],
                   ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.insights,
-                          color: const Color(0xFF6C63FF),
-                          size: 18.sp,
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          "View Advanced Category Trends",
-                          style: TextStyle(
-                            color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.bold,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Data Filters",
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.lightTextPrimary,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Container(
+                            padding: EdgeInsets.all(8.w),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF00E5FF,
+                              ).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            child: Icon(
+                              Icons.filter_list,
+                              size: 18.sp,
+                              color: const Color(0xFF00E5FF),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 20.h),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _dropdown<String>(
+                              label: "Period",
+                              value: _period,
+                              items: _periodOptions,
+                              onChanged: (v) async {
+                                final SubscriptionController subCtrl =
+                                    Get.find();
+                                if (!subCtrl.isPro && v != "This Month") {
+                                  _showProLockModal(
+                                    "Advanced Analytics",
+                                    "Unlock full history and custom date ranges.",
+                                  );
+                                  return;
+                                }
+                                if (v == "Custom Range") {
+                                  final picked = await showDateRangePicker(
+                                    context: context,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now(),
+                                    initialDateRange:
+                                        _customRange ??
+                                        DateTimeRange(
+                                          start: DateTime.now().subtract(
+                                            const Duration(days: 30),
+                                          ),
+                                          end: DateTime.now(),
+                                        ),
+                                  );
+                                  if (picked == null) return;
+                                  if (!mounted) return;
+                                  setState(() {
+                                    _customRange = picked;
+                                    _period = v;
+                                    _filteredCache = null;
+                                  });
+                                } else {
+                                  setState(() {
+                                    _period = v;
+                                    _filteredCache = null;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          SizedBox(width: 16.w),
+                          Expanded(
+                            child: _dropdown<String?>(
+                              label: "Category",
+                              value: _categoryFilter,
+                              items: [null, ...categories],
+                              format: (v) => v ?? "All Categories",
+                              onChanged: (v) => setState(() {
+                                _categoryFilter = v;
+                                _filteredCache = null;
+                              }),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 30.h),
+
+              // -------- Summary Cards (Icons + Gradients) ----------
+              StaggeredSlideFade(
+                delay: 100,
+                child: Text(
+                  "Financial Summary",
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              StaggeredSlideFade(
+                delay: 150,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _summary(
+                        "Income",
+                        totalIncome,
+                        const Color(0xFF00E5FF),
+                        Icons.arrow_upward_rounded,
+                        onTap: () => Get.to(
+                          () => TransactionHistoryScreen(
+                            initialTab: 1,
+                            filterMonth: DateTime.now(),
                           ),
                         ),
-                        SizedBox(width: 8.w),
-                        Icon(
-                          Icons.arrow_forward_ios,
-                          size: 14.sp,
-                          color: isDark ? Colors.white54 : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                    SizedBox(width: 16.w),
+                    Expanded(
+                      child: _summary(
+                        "Expenses",
+                        totalExpense,
+                        const Color(0xFFFF2975),
+                        Icons.arrow_downward_rounded,
+                        onTap: () => Get.to(
+                          () => TransactionHistoryScreen(
+                            initialTab: 2,
+                            filterMonth: DateTime.now(),
+                          ),
                         ),
-                      ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 16.h),
+              StaggeredSlideFade(
+                delay: 200,
+                child: _summary(
+                  "Net Balance",
+                  netBalance,
+                  netBalance >= 0
+                      ? const Color(0xFF00E5FF)
+                      : const Color(0xFFFF2975),
+                  Icons.account_balance_wallet_rounded,
+                  isWide: true,
+                  onTap: () => Get.to(
+                    () => TransactionHistoryScreen(
+                      initialTab: 0,
+                      filterMonth: DateTime.now(),
                     ),
                   ),
                 ),
               ),
-            ),
+
+              SizedBox(height: 24.h),
+
+              StaggeredSlideFade(
+                delay: 250,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      Get.to(() => const AnalyticsTrendsScreen());
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 24.w,
+                        vertical: 12.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6C63FF).withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(30.r),
+                        border: Border.all(
+                          color: const Color(0xFF6C63FF).withValues(alpha: 0.5),
+                        ),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.insights,
+                              color: const Color(0xFF6C63FF),
+                              size: 18.sp,
+                            ),
+                            SizedBox(width: 8.w),
+                            Text(
+                              "View Advanced Category Trends",
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.white
+                                    : AppColors.lightTextPrimary,
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: 14.sp,
+                              color: isDark
+                                  ? Colors.white54
+                                  : AppColors.lightTextSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 32.h),
+
+              // ------------ QUICK OVERVIEW (Progress Style) ------------------
+              StaggeredSlideFade(delay: 300, child: _quickOverviewCard()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- TREND CHART -------------------
+              StaggeredSlideFade(delay: 400, child: _buildTrendChart()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- PIE CHART -------------------
+              StaggeredSlideFade(delay: 500, child: _buildPieChart()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- SPENDING HEATMAP -------------------
+              StaggeredSlideFade(delay: 600, child: _buildHeatmap()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- MERCHANT INSIGHTS -------------------
+              StaggeredSlideFade(delay: 700, child: _buildMerchantInsights()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- SALARY DETECTION -------------------
+              StaggeredSlideFade(delay: 800, child: _buildSalaryDetection()),
+
+              SizedBox(height: 32.h),
+
+              // ------------- SPENDING PERSONALITY -------------------
+              StaggeredSlideFade(
+                delay: 900,
+                child: _buildSpendingPersonality(),
+              ),
+
+              SizedBox(height: 50.h),
+            ],
           ),
-
-          SizedBox(height: 32.h),
-
-          // ------------ QUICK OVERVIEW (Progress Style) ------------------
-          _StaggeredSlideFade(delay: 300, child: _quickOverviewCard()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- TREND CHART -------------------
-          _StaggeredSlideFade(delay: 400, child: _buildTrendChart()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- PIE CHART -------------------
-          _StaggeredSlideFade(delay: 500, child: _buildPieChart()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- SPENDING HEATMAP -------------------
-          _StaggeredSlideFade(delay: 600, child: _buildHeatmap()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- MERCHANT INSIGHTS -------------------
-          _StaggeredSlideFade(delay: 700, child: _buildMerchantInsights()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- SALARY DETECTION -------------------
-          _StaggeredSlideFade(delay: 800, child: _buildSalaryDetection()),
-
-          SizedBox(height: 32.h),
-
-          // ------------- SPENDING PERSONALITY -------------------
-          _StaggeredSlideFade(delay: 900, child: _buildSpendingPersonality()),
-
-          SizedBox(height: 50.h),
-        ],
-      ),
         ),
       ),
     );
@@ -867,14 +966,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   // ---------- QUICK OVERVIEW CARD UI (Updated) -----------
 
-  Color _c([double opacity = 1]) =>
-      isDark ? Colors.white.withValues(alpha: opacity) : AppColors.lightTextPrimary.withValues(alpha: opacity);
-  Color _glassBg() => isDark
-      ? Colors.white.withValues(alpha: 0.05)
-      : AppColors.lightSurface;
-  Color _glassBorder() => isDark
-      ? Colors.white.withValues(alpha: 0.1)
-      : AppColors.lightBorder;
+  Color _c([double opacity = 1]) => isDark
+      ? Colors.white.withValues(alpha: opacity)
+      : AppColors.lightTextPrimary.withValues(alpha: opacity);
+  Color _glassBg() =>
+      isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface;
+  Color _glassBorder() =>
+      isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder;
 
   Widget _quickOverviewCard() {
     final (dIncome, dExpense) = _todayTotals;
@@ -1001,7 +1099,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         borderRadius: BorderRadius.circular(10.r),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                            color: const Color(
+                              0xFF00E5FF,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 6.r,
                             spreadRadius: 1.r,
                           ),
@@ -1018,10 +1118,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: Text(
                 "${CurrencyController.to.currencySymbol.value}${inc.toStringAsFixed(0)}",
                 textAlign: TextAlign.end,
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  color: _c(0.7),
-                ),
+                style: TextStyle(fontSize: 11.sp, color: _c(0.7)),
               ),
             ),
           ],
@@ -1060,7 +1157,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         borderRadius: BorderRadius.circular(10.r),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFFF2975).withValues(alpha: 0.4),
+                            color: const Color(
+                              0xFFFF2975,
+                            ).withValues(alpha: 0.4),
                             blurRadius: 6.r,
                             spreadRadius: 1.r,
                           ),
@@ -1077,10 +1176,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: Text(
                 "${CurrencyController.to.currencySymbol.value}${exp.toStringAsFixed(0)}",
                 textAlign: TextAlign.end,
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  color: _c(0.7),
-                ),
+                style: TextStyle(fontSize: 11.sp, color: _c(0.7)),
               ),
             ),
           ],
@@ -1106,7 +1202,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           label,
           style: TextStyle(
             fontSize: 11.sp,
-            color: isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.lightTextSecondary,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.6)
+                : AppColors.lightTextSecondary,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1114,21 +1212,29 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         Container(
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 2.h),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : AppColors.lightSurface,
             borderRadius: BorderRadius.circular(10.r),
             border: Border.all(
-              color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : AppColors.lightBorder,
             ),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<T>(
               value: value,
               isExpanded: true,
-              dropdownColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+              dropdownColor: isDark
+                  ? AppColors.darkSurface
+                  : AppColors.lightSurface,
               icon: Icon(
                 Icons.keyboard_arrow_down,
                 size: 18.sp,
-                color: isDark ? Colors.white.withValues(alpha: 0.5) : AppColors.lightTextTertiary,
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.5)
+                    : AppColors.lightTextTertiary,
               ),
               items: items
                   .map(
@@ -1139,7 +1245,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12.5.sp,
-                          color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                          color: isDark
+                              ? Colors.white
+                              : AppColors.lightTextPrimary,
                         ),
                       ),
                     ),
@@ -1165,71 +1273,76 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      width: isWide ? double.infinity : null,
-      padding: EdgeInsets.all(18.w),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(24.r),
-        border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
-            blurRadius: 12.r,
-            offset: Offset(0, 6.h),
+        width: isWide ? double.infinity : null,
+        padding: EdgeInsets.all(18.w),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(24.r),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : AppColors.lightBorder,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(10.w),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.2),
-                  blurRadius: 10.r,
-                  spreadRadius: 1.r,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+              blurRadius: 12.r,
+              offset: Offset(0, 6.h),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: EdgeInsets.all(10.w),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.2),
+                    blurRadius: 10.r,
+                    spreadRadius: 1.r,
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: color, size: 22.sp),
+            ),
+            SizedBox(width: 16.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : AppColors.lightTextSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  "${CurrencyController.to.currencySymbol.value}${amount.toStringAsFixed(0)}",
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ],
             ),
-            child: Icon(icon, color: color, size: 22.sp),
-          ),
-          SizedBox(width: 16.w),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.lightTextSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                "${CurrencyController.to.currencySymbol.value}${amount.toStringAsFixed(0)}",
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : AppColors.lightTextPrimary,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),  // Container
-    );  // GestureDetector
+          ],
+        ),
+      ), // Container
+    ); // GestureDetector
   }
 
   // ================= TREND CHART ===================
-
 
   Widget _buildTrendChart() {
     final isDark = _cachedIsDark;
@@ -1253,10 +1366,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       height: 300.h,
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : AppColors.lightBorder,
         ),
         boxShadow: [
           BoxShadow(
@@ -1289,7 +1406,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     style: TextStyle(
                       fontSize: 11.sp,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white.withValues(alpha: 0.7) : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                   SizedBox(width: 8.w),
@@ -1299,7 +1418,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     style: TextStyle(
                       fontSize: 11.sp,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white.withValues(alpha: 0.7) : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                 ],
@@ -1318,7 +1439,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   drawVerticalLine: false,
                   horizontalInterval: maxY / 4,
                   getDrawingHorizontalLine: (value) => FlLine(
-                    color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightBorder.withValues(alpha: 0.3),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : AppColors.lightBorder.withValues(alpha: 0.3),
                     strokeWidth: 1,
                     dashArray: [5, 5],
                   ),
@@ -1340,7 +1463,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             parts.first,
                             style: TextStyle(
                               fontSize: 11.sp,
-                              color: isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.lightTextTertiary,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.6)
+                                  : AppColors.lightTextTertiary,
                             ),
                           ),
                         );
@@ -1348,9 +1473,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ),
                   ),
                   leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: false,
-                    ),
+                    sideTitles: SideTitles(showTitles: false),
                   ),
                   topTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -1378,7 +1501,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             radius: 4.r,
                             color: const Color(0xFF00E5FF),
                             strokeWidth: 2.r,
-                            strokeColor: isDark ? const Color(0xFF16213E) : AppColors.lightSurface,
+                            strokeColor: isDark
+                                ? const Color(0xFF16213E)
+                                : AppColors.lightSurface,
                           ),
                     ),
                     belowBarData: BarAreaData(
@@ -1404,7 +1529,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             radius: 4.r,
                             color: const Color(0xFFFF2975),
                             strokeWidth: 2.r,
-                            strokeColor: isDark ? const Color(0xFF16213E) : AppColors.lightSurface,
+                            strokeColor: isDark
+                                ? const Color(0xFF16213E)
+                                : AppColors.lightSurface,
                           ),
                     ),
                     belowBarData: BarAreaData(
@@ -1416,10 +1543,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (_) =>
-                        (isDark ? const Color(0xFF16213E) : AppColors.lightSurface).withValues(alpha: 0.9),
+                        (isDark
+                                ? const Color(0xFF16213E)
+                                : AppColors.lightSurface)
+                            .withValues(alpha: 0.9),
                     tooltipPadding: const EdgeInsets.all(8),
                     tooltipBorder: BorderSide(
-                      color: isDark ? Colors.white.withValues(alpha: 0.2) : AppColors.lightBorder,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : AppColors.lightBorder,
                       width: 1,
                     ),
                     getTooltipItems: (touchedSpots) {
@@ -1427,7 +1559,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         return LineTooltipItem(
                           "${CurrencyController.to.currencySymbol.value}${spot.y.toStringAsFixed(0)}",
                           TextStyle(
-                            color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                            color: isDark
+                                ? Colors.white
+                                : AppColors.lightTextPrimary,
                             fontWeight: FontWeight.bold,
                           ),
                         );
@@ -1452,10 +1586,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       height: 280.h,
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : AppColors.lightBorder,
         ),
         boxShadow: [
           BoxShadow(
@@ -1487,7 +1625,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     point.label,
                     style: TextStyle(
                       fontSize: 12.sp,
-                      color: isDark ? Colors.white.withValues(alpha: 0.6) : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.6)
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                 ],
@@ -1525,7 +1665,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13.sp,
-                              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.lightTextPrimary,
                             ),
                           ),
                         );
@@ -1713,7 +1855,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             child: Text(
                               entry.key,
                               style: TextStyle(
-                                color: isDark ? Colors.white70 : AppColors.lightTextSecondary,
+                                color: isDark
+                                    ? Colors.white70
+                                    : AppColors.lightTextSecondary,
                                 fontSize: 12.sp,
                               ),
                               overflow: TextOverflow.ellipsis,
@@ -1737,17 +1881,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       height: 200.h,
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : AppColors.lightBorder,
         ),
       ),
       child: Center(
         child: Text(
           text,
           style: TextStyle(
-            color: isDark ? Colors.white.withValues(alpha: 0.7) : AppColors.lightTextSecondary,
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.7)
+                : AppColors.lightTextSecondary,
           ),
         ),
       ),
@@ -1759,8 +1909,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const SizedBox.shrink();
     final now = DateTime.now();
-    final displayMonth = DateTime(now.year, now.month + _calendarMonthOffset, 1);
-    final daysInMonth = DateTime(displayMonth.year, displayMonth.month + 1, 0).day;
+    final displayMonth = DateTime(
+      now.year,
+      now.month + _calendarMonthOffset,
+      1,
+    );
+    final daysInMonth = DateTime(
+      displayMonth.year,
+      displayMonth.month + 1,
+      0,
+    ).day;
     final theme = _cachedTheme;
     final isDark = _cachedIsDark;
     final sym = CurrencyController.to.currencySymbol.value;
@@ -1769,7 +1927,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final Map<int, double> daySpend = {};
     for (final tx in _transactionController.transactions) {
       if (tx.senderId != uid) continue;
-      if (tx.date.year != displayMonth.year || tx.date.month != displayMonth.month) continue;
+      if (tx.date.year != displayMonth.year ||
+          tx.date.month != displayMonth.month) {
+        continue;
+      }
       daySpend[tx.date.day] = (daySpend[tx.date.day] ?? 0) + tx.amount.abs();
     }
     final maxSpend = daySpend.values.fold(0.0, (a, b) => b > a ? b : a);
@@ -1780,7 +1941,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(
           color: isDark ? Colors.transparent : AppColors.lightBorder,
@@ -1794,7 +1957,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               Text(
                 'Spending Heatmap',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const Spacer(),
               GestureDetector(
@@ -1802,12 +1967,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   setState(() => _calendarMonthOffset--);
                   _loadCalendarEvents();
                 },
-                child: Icon(Icons.chevron_left, size: 22.sp, color: theme.textTheme.bodySmall?.color),
+                child: Icon(
+                  Icons.chevron_left,
+                  size: 22.sp,
+                  color: theme.textTheme.bodySmall?.color,
+                ),
               ),
               SizedBox(width: 4.w),
               Text(
                 DateFormat('MMM yyyy').format(displayMonth),
-                style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: theme.textTheme.bodyMedium?.color),
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  color: theme.textTheme.bodyMedium?.color,
+                ),
               ),
               SizedBox(width: 4.w),
               GestureDetector(
@@ -1862,7 +2035,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               final intensity = maxSpend > 0 ? (spend / maxSpend) : 0.0;
               final bgColor = spend == 0
                   ? Colors.green.withValues(alpha: 0.08)
-                  : Color.lerp(Colors.green.shade200, Colors.green.shade900, intensity)!;
+                  : Color.lerp(
+                      Colors.green.shade200,
+                      Colors.green.shade900,
+                      intensity,
+                    )!;
               final isToday = _calendarMonthOffset == 0 && day == now.day;
               final events = dayEvents[day] ?? [];
               final hasSalary = events.contains('salary');
@@ -1870,7 +2047,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
               return GestureDetector(
                 onTap: () {
-                  final date = DateTime(displayMonth.year, displayMonth.month, day);
+                  final date = DateTime(
+                    displayMonth.year,
+                    displayMonth.month,
+                    day,
+                  );
                   Get.to(() => TransactionHistoryScreen(filterDate: date));
                 },
                 child: Tooltip(
@@ -1880,7 +2061,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       color: bgColor,
                       borderRadius: BorderRadius.circular(4.r),
                       border: Border.all(
-                        color: isToday ? const Color(0xFF00E5FF) : Colors.transparent,
+                        color: isToday
+                            ? const Color(0xFF00E5FF)
+                            : Colors.transparent,
                         width: 1.5,
                       ),
                     ),
@@ -1891,7 +2074,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           '$day',
                           style: TextStyle(
                             fontSize: 8.sp,
-                            color: intensity > 0.6 ? Colors.white : theme.textTheme.bodySmall?.color,
+                            color: intensity > 0.6
+                                ? Colors.white
+                                : theme.textTheme.bodySmall?.color,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1950,10 +2135,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         Container(
           width: 10.w,
           height: 10.w,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2.r)),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2.r),
+          ),
         ),
         SizedBox(width: 4.w),
-        Text(label, style: TextStyle(fontSize: 10.sp, color: _cachedTheme.textTheme.bodySmall?.color)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.sp,
+            color: _cachedTheme.textTheme.bodySmall?.color,
+          ),
+        ),
       ],
     );
   }
@@ -1974,7 +2168,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       if (existing == null) {
         merchants[name] = (count: 1, total: tx.amount.abs());
       } else {
-        merchants[name] = (count: existing.count + 1, total: existing.total + tx.amount.abs());
+        merchants[name] = (
+          count: existing.count + 1,
+          total: existing.total + tx.amount.abs(),
+        );
       }
     }
 
@@ -1987,7 +2184,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.05)
+            : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(
           color: isDark ? Colors.transparent : AppColors.lightBorder,
@@ -1998,44 +2197,64 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         children: [
           Text(
             'Top Merchants',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
           ),
           SizedBox(height: 12.h),
-          ...top5.map((e) => Padding(
-            padding: EdgeInsets.only(bottom: 10.h),
-            child: Row(
-              children: [
-                Container(
-                  width: 36.w,
-                  height: 36.w,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      e.key.isNotEmpty ? e.key[0].toUpperCase() : '?',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: const Color(0xFF00E5FF), fontSize: 14.sp),
+          ...top5.map(
+            (e) => Padding(
+              padding: EdgeInsets.only(bottom: 10.h),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36.w,
+                    height: 36.w,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E5FF).withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        e.key.isNotEmpty ? e.key[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF00E5FF),
+                          fontSize: 14.sp,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(e.key, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                      Text('${e.value.count} transaction${e.value.count > 1 ? 's' : ''}', style: theme.textTheme.bodySmall),
-                    ],
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.key,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${e.value.count} transaction${e.value.count > 1 ? 's' : ''}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Text(
-                  '$sym${e.value.total.toStringAsFixed(0)}',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.sp, color: const Color(0xFFFF5252)),
-                ),
-              ],
+                  Text(
+                    '$sym${e.value.total.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15.sp,
+                      color: const Color(0xFFFF5252),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );
@@ -2061,7 +2280,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     if (candidateCredits.length < 2) return const SizedBox.shrink();
 
-    final amounts = candidateCredits.map((tx) => tx.amount.abs()).toList()..sort();
+    final amounts = candidateCredits.map((tx) => tx.amount.abs()).toList()
+      ..sort();
     final median = amounts.length % 2 == 1
         ? amounts[amounts.length ~/ 2]
         : (amounts[amounts.length ~/ 2 - 1] + amounts[amounts.length ~/ 2]) / 2;
@@ -2078,16 +2298,27 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Container(
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF69F0AE).withValues(alpha: 0.08) : const Color(0xFF69F0AE).withValues(alpha: 0.12),
+        color: isDark
+            ? const Color(0xFF69F0AE).withValues(alpha: 0.08)
+            : const Color(0xFF69F0AE).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(24.r),
-        border: Border.all(color: const Color(0xFF69F0AE).withValues(alpha: 0.3)),
+        border: Border.all(
+          color: const Color(0xFF69F0AE).withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.all(10.w),
-            decoration: const BoxDecoration(color: Color(0xFF69F0AE), shape: BoxShape.circle),
-            child: Icon(Icons.account_balance_wallet_outlined, color: Colors.black, size: 20.sp),
+            decoration: const BoxDecoration(
+              color: Color(0xFF69F0AE),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.account_balance_wallet_outlined,
+              color: Colors.black,
+              size: 20.sp,
+            ),
           ),
           SizedBox(width: 14.w),
           Expanded(
@@ -2096,7 +2327,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               children: [
                 Text(
                   'Salary Detected',
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: const Color(0xFF69F0AE)),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF69F0AE),
+                  ),
                 ),
                 Text(
                   '${salaryTx.recipientName.isEmpty ? 'Largest credit' : salaryTx.recipientName} — $sym${maxCredit.toStringAsFixed(0)}',
@@ -2111,7 +2345,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
   // ------------- SPENDING PERSONALITY -------------------
 
-  ({String label, String emoji, String description, Color color}) get _spendingPersonality {
+  ({String label, String emoji, String description, Color color})
+  get _spendingPersonality {
     final income = totalIncome;
     final expense = totalExpense;
     final byCategory = spendingByCategory;
@@ -2122,52 +2357,73 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       return (
         label: 'Smart Saver',
         emoji: '💰',
-        description: 'You save over 40% of your income — great financial discipline!',
+        description:
+            'You save over 40% of your income — great financial discipline!',
         color: const Color(0xFF69F0AE),
       );
     }
 
     if (allSpend > 0 && byCategory.isNotEmpty) {
-      final top = byCategory.entries.reduce((a, b) => a.value > b.value ? a : b);
+      final top = byCategory.entries.reduce(
+        (a, b) => a.value > b.value ? a : b,
+      );
       final topPct = top.value / allSpend;
       final cat = top.key.toLowerCase();
 
       if (topPct >= 0.30 &&
-          (cat.contains('food') || cat.contains('dining') || cat.contains('grocer') ||
-           cat.contains('restaurant') || cat.contains('eat'))) {
+          (cat.contains('food') ||
+              cat.contains('dining') ||
+              cat.contains('grocer') ||
+              cat.contains('restaurant') ||
+              cat.contains('eat'))) {
         return (
           label: 'Foodie',
           emoji: '🍔',
-          description: 'Food & dining makes up ${(topPct * 100).toStringAsFixed(0)}% of your spending.',
+          description:
+              'Food & dining makes up ${(topPct * 100).toStringAsFixed(0)}% of your spending.',
           color: const Color(0xFFFF8A65),
         );
       }
 
       if (topPct >= 0.25 &&
-          (cat.contains('travel') || cat.contains('transport') || cat.contains('fuel') ||
-           cat.contains('cab') || cat.contains('bus') || cat.contains('uber') || cat.contains('auto'))) {
+          (cat.contains('travel') ||
+              cat.contains('transport') ||
+              cat.contains('fuel') ||
+              cat.contains('cab') ||
+              cat.contains('bus') ||
+              cat.contains('uber') ||
+              cat.contains('auto'))) {
         return (
           label: 'Commuter',
           emoji: '🚌',
-          description: 'Transport accounts for ${(topPct * 100).toStringAsFixed(0)}% of your expenses.',
+          description:
+              'Transport accounts for ${(topPct * 100).toStringAsFixed(0)}% of your expenses.',
           color: const Color(0xFF4FC3F7),
         );
       }
 
       if (topPct >= 0.30 &&
-          (cat.contains('shopping') || cat.contains('clothing') || cat.contains('fashion') ||
-           cat.contains('apparel') || cat.contains('shoes'))) {
+          (cat.contains('shopping') ||
+              cat.contains('clothing') ||
+              cat.contains('fashion') ||
+              cat.contains('apparel') ||
+              cat.contains('shoes'))) {
         return (
           label: 'Shopaholic',
           emoji: '🛍️',
-          description: 'Shopping takes ${(topPct * 100).toStringAsFixed(0)}% of your budget.',
+          description:
+              'Shopping takes ${(topPct * 100).toStringAsFixed(0)}% of your budget.',
           color: const Color(0xFFE040FB),
         );
       }
 
       if (topPct >= 0.25 &&
-          (cat.contains('entertainment') || cat.contains('leisure') || cat.contains('movie') ||
-           cat.contains('game') || cat.contains('fun') || cat.contains('sport'))) {
+          (cat.contains('entertainment') ||
+              cat.contains('leisure') ||
+              cat.contains('movie') ||
+              cat.contains('game') ||
+              cat.contains('fun') ||
+              cat.contains('sport'))) {
         return (
           label: 'Fun Seeker',
           emoji: '🎉',
@@ -2185,7 +2441,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         return (
           label: 'Big Spender',
           emoji: '💸',
-          description: 'Your average transaction is over ${CurrencyController.to.currencySymbol.value}5,000 — you go big.',
+          description:
+              'Your average transaction is over ${CurrencyController.to.currencySymbol.value}5,000 — you go big.',
           color: const Color(0xFFFF5252),
         );
       }
@@ -2198,7 +2455,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         return (
           label: 'Frequent Spender',
           emoji: '⚡',
-          description: '$recentCount transactions in the last 30 days — always on the move.',
+          description:
+              '$recentCount transactions in the last 30 days — always on the move.',
           color: const Color(0xFFFFB300),
         );
       }
@@ -2208,7 +2466,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       return (
         label: 'Just Getting Started',
         emoji: '🌱',
-        description: 'Add more transactions to unlock your spending personality.',
+        description:
+            'Add more transactions to unlock your spending personality.',
         color: const Color(0xFFA5D6A7),
       );
     }
@@ -2246,7 +2505,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               Container(
                 padding: EdgeInsets.all(10.w),
-                decoration: BoxDecoration(color: p.color.withValues(alpha: 0.2), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: p.color.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
                 child: Text(p.emoji, style: TextStyle(fontSize: 20.sp)),
               ),
               SizedBox(width: 12.w),
@@ -2279,17 +2541,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           SizedBox(height: 12.h),
           Text(
             p.description,
-            style: TextStyle(fontSize: 13.sp, color: theme.textTheme.bodyMedium?.color),
+            style: TextStyle(
+              fontSize: 13.sp,
+              color: theme.textTheme.bodyMedium?.color,
+            ),
           ),
           if (income > 0) ...[
             SizedBox(height: 14.h),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Saving rate', style: TextStyle(fontSize: 12.sp, color: theme.textTheme.bodyMedium?.color)),
+                Text(
+                  'Saving rate',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: theme.textTheme.bodyMedium?.color,
+                  ),
+                ),
                 Text(
                   '${(rawRate * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w700, color: rateColor),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                    color: rateColor,
+                  ),
                 ),
               ],
             ),
@@ -2324,64 +2599,6 @@ class _MonthPoint {
   double expense = 0;
 
   _MonthPoint({required this.label});
-}
-
-// ============================================
-// ANIMATION HELPERS
-// ============================================
-
-class _StaggeredSlideFade extends StatefulWidget {
-  final Widget child;
-  final int delay;
-
-  const _StaggeredSlideFade({required this.child, this.delay = 0});
-
-  @override
-  State<_StaggeredSlideFade> createState() => _StaggeredSlideFadeState();
-}
-
-class _StaggeredSlideFadeState extends State<_StaggeredSlideFade>
-    with SingleTickerProviderStateMixin {
-  AnimationController? _controller;
-  late Animation<double> _fadeAnim;
-  late Animation<Offset> _slideAnim;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-
-    _fadeAnim = CurvedAnimation(parent: _controller!, curve: Curves.easeOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller!, curve: Curves.easeOutQuad));
-
-    if (widget.delay == 0) {
-      _controller?.forward();
-    } else {
-      Future.delayed(Duration(milliseconds: widget.delay), () {
-        if (mounted) _controller?.forward();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: SlideTransition(position: _slideAnim, child: widget.child),
-    );
-  }
 }
 
 // ... (existing imports)

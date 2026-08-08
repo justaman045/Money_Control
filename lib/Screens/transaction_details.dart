@@ -89,7 +89,9 @@ class _TransactionResultScreenState extends State<TransactionResultScreen> {
   // ----------------------------------------------------------------------
   Future<void> _shareScreenshot() async {
     try {
-      final Uint8List? image = await _ssController.capture();
+      final Uint8List? image = await _ssController.capture(
+        pixelRatio: 2.0,
+      );
       if (image != null) {
         // ignore: deprecated_member_use
         await Share.shareXFiles([
@@ -218,7 +220,16 @@ class _TransactionResultScreenState extends State<TransactionResultScreen> {
         ),
         body: Screenshot(
           controller: _ssController,
-          child: _buildBody(context, widget.transaction),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark ? AppColors.darkGradient : AppColors.lightGradient,
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            child: _buildBody(context, widget.transaction),
+          ),
         ),
       ),
     );
@@ -441,7 +452,7 @@ class _TransactionResultScreenState extends State<TransactionResultScreen> {
       height: 48.h,
       width: 140.w,
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.03),
+        color: isDark ? Colors.white.withValues(alpha: 0.08) : AppColors.lightActionSurface,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.1) : AppColors.lightBorder.withValues(alpha: 0.5)),
         boxShadow: [
@@ -485,7 +496,7 @@ class _TransactionResultScreenState extends State<TransactionResultScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 24.h),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
         borderRadius: BorderRadius.circular(24.r),
         border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.08) : AppColors.lightBorder.withValues(alpha: 0.5)),
         boxShadow: [

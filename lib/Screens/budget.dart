@@ -11,6 +11,7 @@ import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Controllers/subscription_controller.dart';
 import 'package:money_control/Controllers/budget_controller.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Components/colors.dart';
 
 class CategoryBudgetScreen extends StatefulWidget {
   const CategoryBudgetScreen({super.key});
@@ -264,7 +265,7 @@ class _CategoryBudgetScreenState extends State<CategoryBudgetScreen> {
               color: progressColor,
               backgroundColor: isDark
                   ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.05),
+                  : AppColors.lightSurfaceCard,
               minHeight: 6.h,
             ),
           ),
@@ -282,7 +283,7 @@ class _CategoryBudgetScreenState extends State<CategoryBudgetScreen> {
                     border: Border.all(
                       color: isDark
                           ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.black.withValues(alpha: 0.05),
+                          : AppColors.lightBorder.withValues(alpha: 0.5),
                     ),
                   ),
                   child: TextFormField(

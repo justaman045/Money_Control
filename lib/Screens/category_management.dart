@@ -134,7 +134,7 @@ class _CategoryManagementScreenState extends State<CategoryManagementScreen> {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12.w),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
                     borderRadius: BorderRadius.circular(12.r),
                     border: Border.all(color: isDark ? Colors.white24 : AppColors.lightBorder),
                   ),
@@ -500,7 +500,7 @@ class _CategoryDialogState extends State<_CategoryDialog> {
                       decoration: BoxDecoration(
                         color: _selectedIconCode == icon.codePoint
                             ? Color(_selectedColor).withValues(alpha: 0.3)
-                            : isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                            : isDark ? Colors.white.withValues(alpha: 0.05) : AppColors.lightSurfaceCard,
                         borderRadius: BorderRadius.circular(8.r),
                         border: _selectedIconCode == icon.codePoint
                             ? Border.all(color: Color(_selectedColor))

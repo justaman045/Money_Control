@@ -2,8 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:money_control/Utils/animation.dart';
 
 import 'package:get/get.dart';
 import 'package:money_control/Components/cateogary_initial_icon.dart';
@@ -88,13 +88,14 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
               ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
+          icon: Icon(Icons.arrow_back_ios_new,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         title: Text(
           "Categories History",
           style: TextStyle(
-            color: Colors.white,
+            color: isDark ? Colors.white : AppColors.lightTextPrimary,
             fontWeight: FontWeight.bold,
             fontSize: 18.sp,
           ),
@@ -116,7 +117,9 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
               margin: EdgeInsets.symmetric(horizontal: 40.w),
               padding: EdgeInsets.all(4.w),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.1)
+                    : AppColors.lightSurfaceCard,
                 borderRadius: BorderRadius.circular(30.r),
               ),
               child: Row(
@@ -217,7 +220,7 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
                       title: "No Categories",
                       subtitle: "No transactions found for this period.",
                       icon: Icons.category_outlined,
-                      color: Colors.white38,
+                      color: isDark ? Colors.white38 : AppColors.lightTextTertiary,
                     ),
                   );
                 }
@@ -233,10 +236,11 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
                       itemCount: items.length,
                       itemBuilder: (context, index) {
                         final category = items[index];
-                        return _buildCategoryCard(category, category.budget)
-                            .animate(delay: (index * 50).ms)
-                            .fadeIn(duration: 400.ms)
-                            .slideY(begin: 0.1, end: 0, curve: Curves.easeOut);
+                        return animatedItem(
+                          _buildCategoryCard(category, category.budget),
+                          index,
+                          slide: true,
+                        );
                       },
                     ),
                   ),
@@ -255,6 +259,7 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
   // so let's update `_CategoryItem` class too.
 
   Widget _tabButton(String text, int index) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isSelected = selectedTab == index;
     // Income = Green (index 0), Expense = Red (index 1)
     final activeColor = index == 0
@@ -280,7 +285,11 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
           text,
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: isSelected ? activeColor : Colors.white54,
+            color: isSelected
+                ? activeColor
+                : isDark
+                    ? Colors.white54
+                    : AppColors.lightTextSecondary,
             fontSize: 14.sp,
           ),
         ),
@@ -289,6 +298,7 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
   }
 
   Widget _buildCategoryCard(_CategoryItem category, double budget) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     // 0 = Income (Green), 1 = Expense (Red)
     final isExpense = selectedTab == 1;
     final primaryColor = isExpense
@@ -309,9 +319,14 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
           margin: EdgeInsets.only(bottom: 12.h),
           padding: EdgeInsets.all(16.w),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05), // Dark Glass
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : AppColors.lightSurfaceCard,
             borderRadius: BorderRadius.circular(24.r),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : AppColors.lightBorder),
           ),
           child: Row(
             children: [
@@ -340,7 +355,7 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
                     Text(
                       category.name,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: isDark ? Colors.white : AppColors.lightTextPrimary,
                         fontSize: 15.sp,
                         fontWeight: FontWeight.w600,
                       ),
@@ -352,7 +367,9 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
                           value: (category.total / budget).clamp(0.0, 1.0),
-                          backgroundColor: Colors.white10,
+                          backgroundColor: isDark
+                              ? Colors.white10
+                              : AppColors.lightBorder,
                           valueColor: AlwaysStoppedAnimation(
                             category.total > budget
                                 ? Colors
@@ -393,7 +410,7 @@ class _CategoriesHistoryScreenState extends State<CategoriesHistoryScreen> {
                       child: Text(
                         'of ${CurrencyController.to.currencySymbol.value}${budget.toStringAsFixed(0)}',
                         style: TextStyle(
-                          color: Colors.white38,
+                          color: isDark ? Colors.white38 : AppColors.lightTextTertiary,
                           fontSize: 11.sp,
                         ),
                       ),

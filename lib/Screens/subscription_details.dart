@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -27,11 +29,26 @@ class SubscriptionDetailsScreen extends StatefulWidget {
 class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
   final RecurringService _service = RecurringService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  Timer? _loadTimer;
+  bool _loadTimedOut = false;
 
   @override
   void initState() {
     super.initState();
     _repairUnlinkedHistory();
+    // Bound the doc/history spinners: after a few seconds with no Firestore
+    // emission (no network, no cache) show an offline note instead of spinning
+    // forever. The StreamBuilders repopulate on their own once the stream
+    // emits.
+    _loadTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _loadTimedOut = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _loadTimer?.cancel();
+    super.dispose();
   }
 
   // Backfill recurringPaymentId onto auto-pay transactions that lost their
@@ -231,11 +248,23 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             .doc(widget.payment.id)
             .snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            final waiting = snapshot.connectionState == ConnectionState.waiting;
+            if (waiting && !_loadTimedOut) {
               return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
               return Center(child: Text("Error: ${snapshot.error}"));
+            }
+            if (waiting && !snapshot.hasData) {
+              return Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32.w),
+                  child: Text(
+                    "Couldn't load subscription. Check your connection.",
+                    style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 14),
+                  ),
+                ),
+              );
             }
             if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: Text("Subscription not found"));
@@ -264,6 +293,8 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                     _buildHeaderCard(isDark, textColor, paymentData),
                 SizedBox(height: 24.h),
                 if (paymentData.isActive) ...[
+                  _buildAutoPayToggle(isDark, textColor, paymentData),
+                  SizedBox(height: 24.h),
                   _buildActionButtons(isDark, textColor, paymentData),
                   SizedBox(height: 32.h),
                 ],
@@ -442,6 +473,69 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
       !payment.autoPay &&
       !payment.nextDueDate.isAfter(DateTime.now());
 
+  Widget _buildAutoPayToggle(
+    bool isDark,
+    Color textColor,
+    RecurringPayment payment,
+  ) {
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+          side: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.grey.withValues(alpha: 0.2),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: payment.autoPay,
+            onChanged: (value) async {
+              await _service.toggleAutoPay(payment.id, value);
+              if (!mounted) return;
+              ErrorHandler.showSuccess(
+                value ? "Auto-pay enabled" : "Auto-pay disabled",
+              );
+            },
+            title: Text(
+              "Auto-pay",
+              style: TextStyle(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+            subtitle: Text(
+              payment.autoPay
+                  ? "When due, a transaction is created automatically."
+                  : "Remind me when due — I'll mark it paid manually.",
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: textColor.withValues(alpha: 0.6),
+              ),
+            ),
+            secondary: Icon(
+              payment.autoPay
+                  ? Icons.auto_awesome_rounded
+                  : Icons.notifications_active_outlined,
+              color: payment.autoPay
+                  ? const Color(0xFF00B8D4)
+                  : Colors.orange,
+              size: 22.sp,
+            ),
+            activeThumbColor: const Color(0xFF00B8D4),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButtons(
     bool isDark,
     Color textColor,
@@ -527,16 +621,22 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
 
     // Primary stream stays live; the note-prefix fallback is re-fetched on
     // every emission (its contents are legacy/slow-changing, so a one-shot
-    // refresh is sufficient).
+    // refresh is sufficient). The fallback must never block the merged stream:
+    // while offline its `.get()` can hang indefinitely, so it is time-boxed
+    // and skipped on failure.
     return linked.asyncMap((snap) async {
-      final noteSnap = await byNote.get();
       final seen = <String>{};
       final docs = <QueryDocumentSnapshot>[];
       for (final doc in snap.docs) {
         if (seen.add(doc.id)) docs.add(doc);
       }
-      for (final doc in noteSnap.docs) {
-        if (seen.add(doc.id)) docs.add(doc);
+      try {
+        final noteSnap = await byNote.get().timeout(const Duration(seconds: 5));
+        for (final doc in noteSnap.docs) {
+          if (seen.add(doc.id)) docs.add(doc);
+        }
+      } catch (_) {
+        // Offline or timed out — the primary linked stream still rendered.
       }
       return docs;
     });
@@ -546,7 +646,8 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     return StreamBuilder<List<QueryDocumentSnapshot>>(
       stream: _historyStream(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !_loadTimedOut) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {

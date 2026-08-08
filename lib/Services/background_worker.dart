@@ -215,108 +215,64 @@ Future<void> _checkDailyInsights(SharedPreferences prefs) async {
   final now = DateTime.now();
 
   // Trigger only after 10 PM (22:00)
-  if (now.hour >= 22) {
-    final todayStr = DateFormat('yyyy-MM-dd').format(now);
-    final lastRun = prefs.getString('last_daily_insight_run');
+  if (now.hour < 22) return;
+  final todayStr = DateFormat('yyyy-MM-dd').format(now);
+  final userEmail = prefs.getString('user_email');
+  if (userEmail == null) return;
 
-    if (lastRun != todayStr) {
-      // Logic to run
-      final userEmail = prefs.getString('user_email');
+  // Per-user key: a shared device must not swallow another user's insight.
+  final insightKey = 'last_daily_insight_run_$userEmail';
+  final lastRun = prefs.getString(insightKey);
+  if (lastRun == todayStr) return;
 
-      if (userEmail != null) {
-        try {
-          final double spent = await _fetchTodayTotal(
-            userEmail,
-            isExpense: true,
-          );
-          final double received = await _fetchTodayTotal(
-            userEmail,
-            isExpense: false,
-          );
+  try {
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userEmail)
+        .collection('transactions')
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('date', isLessThan: Timestamp.fromDate(endOfDay))
+        .get();
 
-          final symbol = prefs.getString('currency_symbol') ?? '\$';
-
-          await BackgroundWorker.showNotification(
-            "Daily Insight 📊",
-            "Today: Spent $symbol${spent.toStringAsFixed(0)}, Received $symbol${received.toStringAsFixed(0)}",
-            'insight_channel',
-            'Daily Insights',
-            userEmail: userEmail,
-          );
-
-          // Mark as run for today
-          await prefs.setString('last_daily_insight_run', todayStr);
-        } catch (e) {
-          developer.log("Error fetching daily insight: $e");
-        }
-      }
+    // Bail — no transactions today: don't nag with a "Spent 0" insight.
+    if (snapshot.docs.isEmpty) {
+      await prefs.setString(insightKey, todayStr);
+      return;
     }
-  }
-}
 
-Future<double> _fetchTodayTotal(String email, {required bool isExpense}) async {
-  final now = DateTime.now();
-  final startOfDay = DateTime(now.year, now.month, now.day);
-  final endOfDay = startOfDay.add(const Duration(days: 1));
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userEmail)
+        .get();
+    final uid = userDoc.exists ? (userDoc.data()?['uid'] as String?) : null;
+    if (uid == null) return;
 
-  double total = 0;
-
-  final snapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(email)
-      .collection('transactions')
-      .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-      .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
-      .get();
-
-  // We need to filter by sender/recipient to know if it's expense/income
-  // But inside background, we don't have FirebaseAuth user.uid easily unless we saved it.
-  // We only saved email.
-  // HOWEVER: The 'transactions' subcollection usually contains ALL transactions for that user.
-  // We need to check structure.
-  // User Model usually has 'uid'.
-  // Let's assume we can fetch user doc to get UID? Or check transaction fields.
-
-  // Checking codebase assumption:
-  // Transaction Model has senderId and recipientId.
-  // We need current user UID to differentiate income/expense.
-  // Workaround: We fetch the user doc first to get UID.
-
-  final userDoc = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(email)
-      .get();
-  final uid = userDoc.exists ? (userDoc.data()?['uid'] as String?) : null;
-
-  // Legacy or backup: if uid not in doc (it usually is if we saved it on login),
-  // we might have trouble.
-  // BUT: `loginscreen.dart` saves: email, name, photoUrl provider, lastLogin.
-  // It does NOT explicitly save 'uid' in the snippets I saw!
-  // Wait, `signup.dart` usually saves it.
-  // If `uid` is missing, we can't distinguish accurately.
-  // Let's try to infer or just query simpler if possible.
-
-  // ALTERNATIVE: Calculate purely based on positive/negative?
-  // `calculateBankBalance` uses:
-  // where('senderId', isEqualTo: user.uid) -> Expense
-  // where('recipientId', isEqualTo: user.uid) -> Income
-
-  if (uid == null) return 0; // Can't calc specific without UID
-
-  for (var doc in snapshot.docs) {
-    final data = doc.data();
-    final amount = (data['amount'] ?? 0).toDouble().abs();
-    final senderId = data['senderId'];
-    final recipientId = data['recipientId'];
-
-    if (isExpense) {
-      if (senderId == uid) total += amount;
-    } else {
-      if (recipientId == uid) total += amount;
+    double spent = 0;
+    double received = 0;
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final amount = (data['amount'] ?? 0).toDouble().abs();
+      if (data['senderId'] == uid) spent += amount;
+      if (data['recipientId'] == uid) received += amount;
     }
-  }
 
-  return total;
+    final symbol = prefs.getString('currency_symbol') ?? '\$';
+
+    await BackgroundWorker.showNotification(
+      "Daily Insight 📊",
+      "Today: Spent $symbol${spent.toStringAsFixed(0)}, Received $symbol${received.toStringAsFixed(0)}",
+      'insight_channel',
+      'Daily Insights',
+      userEmail: userEmail,
+    );
+
+    // Mark as run for today
+    await prefs.setString(insightKey, todayStr);
+  } catch (e) {
+    developer.log("Error fetching daily insight: $e");
+  }
 }
 
 Future<void> _checkUpdate(SharedPreferences prefs) async {
@@ -330,9 +286,9 @@ Future<void> _checkUpdate(SharedPreferences prefs) async {
   try {
     // 1. Fetch Remote Version
     final url = Uri.parse(
-      "https://raw.githubusercontent.com/justaman045/Money_Control/master/app_version.json",
+      "https://raw.githubusercontent.com/justaman045/WealthSync/master/app_version.json",
     );
-    final response = await http.get(url);
+    final response = await http.get(url).timeout(const Duration(seconds: 10));
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -383,25 +339,29 @@ bool _isNewer(String remote, String local) {
 Future<void> _checkRecurringPayments(SharedPreferences prefs) async {
   final now = DateTime.now();
   final todayStr = DateFormat('yyyy-MM-dd').format(now);
-  final lastRun = prefs.getString('last_recurring_run');
-
-  if (lastRun == todayStr) return; // Already checked today
 
   final userEmail = prefs.getString('user_email');
   final uid = prefs.getString('user_uid');
-  if (userEmail != null && uid != null) {
-    try {
-      final pending = await RecurringService.processDuePayments(userEmail, uid);
-      await _updateWidgetBalance(userEmail);
+  if (userEmail == null || uid == null) return;
 
-      if (pending.isNotEmpty) {
-        await _showPendingReminder(prefs, userEmail, pending);
-      }
+  // Per-user guard so one account's run never suppresses another's.
+  final lastRunKey = 'last_recurring_run_$userEmail';
+  final lastRun = prefs.getString(lastRunKey);
+  if (lastRun == todayStr) return; // Already checked today
 
-      await prefs.setString('last_recurring_run', todayStr);
-    } catch (e) {
-      developer.log("Error processing recurring payments: $e");
+  try {
+    final pending = await RecurringService.processDuePayments(userEmail, uid);
+    await _updateWidgetBalance(userEmail);
+
+    // Persist the guard BEFORE the notification so a notification failure
+    // does not re-fire the reminder on the next 15-minute WorkManager tick.
+    await prefs.setString(lastRunKey, todayStr);
+
+    if (pending.isNotEmpty) {
+      await _showPendingReminder(prefs, userEmail, pending);
     }
+  } catch (e) {
+    developer.log("Error processing recurring payments: $e");
   }
 }
 
@@ -444,7 +404,10 @@ Future<int> _processSmsMessages(
   final smsStatus = await Permission.sms.status;
   if (!smsStatus.isGranted) return 0;
 
-  final lastScanMs = prefs.getInt('last_sms_scan_ms') ?? 0;
+  // Per-user watermark so one account's scan point never skips another
+  // user's older bank SMS on a shared device.
+  final lastScanKey = 'last_sms_scan_ms_$userEmail';
+  final lastScanMs = prefs.getInt(lastScanKey) ?? 0;
   final lastScanDate =
       scanFrom ?? DateTime.fromMillisecondsSinceEpoch(lastScanMs);
 
@@ -462,7 +425,7 @@ Future<int> _processSmsMessages(
     }).toList();
 
     if (newBankMessages.isEmpty) {
-      await prefs.setInt('last_sms_scan_ms', DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(lastScanKey, DateTime.now().millisecondsSinceEpoch);
       return 0;
     }
 
@@ -552,28 +515,42 @@ Future<int> _processSmsMessages(
       );
     }
 
-    await prefs.setInt('last_sms_scan_ms', DateTime.now().millisecondsSinceEpoch);
+    await prefs.setInt(lastScanKey, DateTime.now().millisecondsSinceEpoch);
     return imported;
   } catch (e) {
     developer.log('SMS auto-import error: $e');
-    // Do NOT update last_sms_scan_ms on failure — let the next run retry.
+    // Do NOT update the scan watermark on failure — let the next run retry.
     return 0;
   }
 }
 
-/// Queries Firestore for the total balance and pushes it to the home widget.
-/// Called after any background write so the widget stays in sync.
+/// Reads the authoritative balance from the portfolio doc (written by the
+/// foreground on every recompute) and pushes it to the home widget. Avoids a
+/// full transactions scan. Falls back to a scan only for users who haven't
+/// launched the app since the `balance` field was introduced.
 Future<void> _updateWidgetBalance(String email) async {
   try {
     final db = FirebaseFirestore.instance;
-    final snap = await db
+    double total;
+    final portfolioSnap = await db
         .collection('users')
         .doc(email)
-        .collection('transactions')
+        .collection('wealth')
+        .doc('portfolio')
         .get();
-    double total = 0;
-    for (final doc in snap.docs) {
-      total += (doc.data()['amount'] as num?)?.toDouble() ?? 0;
+    final balance = portfolioSnap.data()?['balance'] as num?;
+    if (balance != null) {
+      total = balance.toDouble();
+    } else {
+      final snap = await db
+          .collection('users')
+          .doc(email)
+          .collection('transactions')
+          .get();
+      total = 0;
+      for (final doc in snap.docs) {
+        total += (doc.data()['amount'] as num?)?.toDouble() ?? 0;
+      }
     }
     final prefs = await SharedPreferences.getInstance();
     final symbol = prefs.getString('currency_symbol') ?? '\u20B9';
@@ -589,11 +566,13 @@ Future<void> _checkWeeklyDigest(SharedPreferences prefs) async {
   if (now.weekday != DateTime.sunday || now.hour < 9 || now.hour >= 10) return;
 
   final thisWeekStr = 'week_${now.year}_${_isoWeekNumber(now)}';
-  final lastSent = prefs.getString('last_weekly_digest');
-  if (lastSent == thisWeekStr) return; // Already sent this week
-
   final userEmail = prefs.getString('user_email');
   if (userEmail == null) return;
+
+  // Per-user key: a shared device must not swallow another user's digest.
+  final digestKey = 'last_weekly_digest_$userEmail';
+  final lastSent = prefs.getString(digestKey);
+  if (lastSent == thisWeekStr) return; // Already sent this week
 
   try {
     final db = FirebaseFirestore.instance;
@@ -647,7 +626,7 @@ Future<void> _checkWeeklyDigest(SharedPreferences prefs) async {
       userEmail: userEmail,
     );
 
-    await prefs.setString('last_weekly_digest', thisWeekStr);
+    await prefs.setString(digestKey, thisWeekStr);
   } catch (e) {
     developer.log('Weekly digest error: $e');
   }

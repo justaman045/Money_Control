@@ -11,6 +11,7 @@ import 'package:money_control/Screens/Admin/payment_settings_screen.dart';
 import 'package:money_control/Platform/permission_platform.dart';
 import 'package:money_control/Components/colors.dart';
 import 'package:money_control/Utils/responsive.dart';
+import 'package:money_control/Services/error_handler.dart';
 
 class AdminMenu extends StatefulWidget {
   const AdminMenu({super.key});
@@ -24,33 +25,32 @@ class _AdminMenuState extends State<AdminMenu> {
 
   Future<void> _triggerSmsImport() async {
     if (kIsWeb) {
-      Get.snackbar('Not Available', 'SMS import is not available in browser.',
-          backgroundColor: Colors.orangeAccent, colorText: Colors.white);
+      ErrorHandler.showInfo(
+        'SMS import is not available in browser.',
+        title: 'Not Available',
+      );
       return;
     }
     var status = await Permission.sms.status;
     if (!status.isGranted) {
       if (status.isPermanentlyDenied) {
-        Get.snackbar(
-          'Permission Denied',
+        ErrorHandler.showError(
           'SMS permission was permanently denied. Please enable it in app settings.',
-          backgroundColor: Colors.redAccent,
-          colorText: Colors.white,
+          title: 'Permission Denied',
           duration: const Duration(seconds: 5),
-          mainButton: TextButton(
-            onPressed: () => openAppSettings(),
-            child: const Text('Open Settings', style: TextStyle(color: Colors.white)),
+          action: SnackBarAction(
+            label: 'Open Settings',
+            textColor: Colors.white,
+            onPressed: openAppSettings,
           ),
         );
         return;
       }
       status = await Permission.sms.request();
       if (!status.isGranted) {
-        Get.snackbar(
-          'Permission Denied',
+        ErrorHandler.showError(
           'SMS permission is required to import transactions.',
-          backgroundColor: Colors.redAccent,
-          colorText: Colors.white,
+          title: 'Permission Denied',
         );
         return;
       }
@@ -59,26 +59,19 @@ class _AdminMenuState extends State<AdminMenu> {
     setState(() => _isImporting = true);
     try {
       final count = await BackgroundWorker.triggerSmsImport(days: 7);
-      if (mounted && Get.overlayContext != null) {
-        Get.snackbar(
-          'SMS Import Complete',
-          count > 0
-              ? '$count new transaction${count > 1 ? 's' : ''} imported.'
-              : 'No new transactions found in the last 7 days.',
-          backgroundColor: count > 0 ? const Color(0xFF0FA958) : Colors.grey[700]!,
-          colorText: Colors.white,
-          duration: const Duration(seconds: 4),
+      if (count > 0) {
+        ErrorHandler.showSuccess(
+          '$count new transaction${count > 1 ? 's' : ''} imported.',
+          title: 'SMS Import Complete',
+        );
+      } else {
+        ErrorHandler.showInfo(
+          'No new transactions found in the last 7 days.',
+          title: 'SMS Import Complete',
         );
       }
     } catch (e) {
-      if (mounted && Get.overlayContext != null) {
-        Get.snackbar(
-          'Import Failed',
-          'Something went wrong: $e',
-          backgroundColor: Colors.redAccent,
-          colorText: Colors.white,
-        );
-      }
+      ErrorHandler.showError('Something went wrong: $e', title: 'Import Failed');
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
@@ -128,14 +121,20 @@ class _AdminMenuState extends State<AdminMenu> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: const Text(
+          title: Text(
             "Admin Utils",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(
+              Icons.arrow_back,
+              color: isDark ? Colors.white : AppColors.lightTextPrimary,
+            ),
             onPressed: () => Navigator.of(context).pop(),
           ),
         ),
@@ -200,6 +199,7 @@ class _AdminMenuState extends State<AdminMenu> {
     VoidCallback? onTap,
     bool loading = false,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       child: GlassContainer(
@@ -232,7 +232,7 @@ class _AdminMenuState extends State<AdminMenu> {
                   Text(
                     title,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isDark ? Colors.white : AppColors.lightTextPrimary,
                       fontSize: 18.sp,
                       fontWeight: FontWeight.bold,
                     ),
@@ -240,14 +240,23 @@ class _AdminMenuState extends State<AdminMenu> {
                   SizedBox(height: 4.h),
                   Text(
                     loading ? 'Scanning SMS...' : subtitle,
-                    style: TextStyle(color: Colors.white54, fontSize: 14.sp),
+                    style: TextStyle(
+                      color: isDark
+                          ? Colors.white54
+                          : AppColors.lightTextSecondary,
+                      fontSize: 14.sp,
+                    ),
                   ),
                 ],
               ),
             ),
             loading
                 ? const SizedBox.shrink()
-                : Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 16.sp),
+                : Icon(
+                    Icons.arrow_forward_ios,
+                    color: isDark ? Colors.white24 : AppColors.lightTextTertiary,
+                    size: 16.sp,
+                  ),
           ],
         ),
       ),
