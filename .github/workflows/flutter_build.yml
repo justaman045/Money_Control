@@ -53,18 +53,20 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # Upload the whole report dir (unit.json + unit_report.html) so the
+          # integration job's combined report can embed the unit results.
           name: unit-test-report
-          path: build/report/unit_report.html
+          path: build/report/
           if-no-files-found: warn
 
   # End-to-end tests against the live Firebase backend on an Android emulator.
   # These mutate the shared test account (create transactions, recurring
   # payments, etc.), so they run on master pushes / manual dispatch only —
-  # never on pull requests. They do NOT gate the build: the release ships based
-  # on the unit/widget suite alone, and this job runs in parallel with it. A
-  # failing E2E suite marks the run red but never blocks the release. A
-  # downloadable report (pass/fail, errors, screenshots) is generated and
-  # uploaded whether the suite passes or fails.
+  # never on pull requests. They GATE the build: build and build_web depend on
+  # this job, so nothing ships unless BOTH the unit/widget suite and the E2E
+  # suite pass. Each test file runs under a 15-minute timeout so a single hung
+  # file can't stall the whole suite. A downloadable report (pass/fail, errors,
+  # screenshots) is generated and uploaded whether the suite passes or fails.
   integration_test:
     runs-on: ubuntu-latest
     needs: test
@@ -101,20 +103,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            set -e
-            mkdir -p build/report/parts build/report/screenshots
-            FLUTTER_EXIT=0
-            for f in integration_test/*_test.dart; do
-              name=$(basename "$f" .dart)
-              echo "=== Running $name ==="
-              timeout 15m flutter test "$f" -d emulator-5554 --no-uninstall --dart-define=TEST_EMAIL=${{ secrets.TEST_EMAIL }} --dart-define=TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} --file-reporter "json:build/report/parts/$name.json" || FLUTTER_EXIT=$?
-              adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read g; do
-                [ -f "build/report/screenshots/$g" ] || adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$g" > "build/report/screenshots/$g" 2>/dev/null || true
-              done
-              echo "--- screenshots pulled so far: $(ls build/report/screenshots 2>/dev/null | wc -l)"
-            done
-            exit $FLUTTER_EXIT
+          # Invoked as a single line because this action executes its `script:`
+          # input one line at a time via `/usr/bin/sh -c` — multi-line loops
+          # must live in the committed bash file instead.
+          script: bash tool/run_integration_tests.sh
+        env:
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
 
       - name: Download unit test report
         if: always()
@@ -125,7 +120,7 @@ jobs:
 
       - name: Generate combined test report
         if: always()
-        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --integration="$(ls build/report/parts/*.json | paste -sd,)" --screenshots=build/report/screenshots --out=build/report/report.html
+        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --integration="$(ls build/report/parts/*.json 2>/dev/null | paste -sd,)" --screenshots=build/report/screenshots --out=build/report/report.html
 
       - name: Upload integration test report
         if: always()
@@ -137,12 +132,12 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, integration_test]
     # Release-producing build only on master pushes (or manual dispatch). PRs
     # must not bump versions, create releases, or deploy Pages — and their
     # detached-HEAD checkout makes the CI commit step fail outright.
-    # Gated on the unit/widget test suite only; integration_test runs in
-    # parallel and its result does not block this release.
+    # Gated on BOTH the unit/widget suite and the E2E suite: if either fails,
+    # nothing is released or deployed.
     if: github.event_name != 'pull_request'
 
     steps:
@@ -305,10 +300,9 @@ jobs:
   # ------------------------------------------------------------
   build_web:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, integration_test]
     # Pages deployment is master-push/manual only — never from pull requests.
-    # Gated on the unit/widget test suite only; integration_test runs in
-    # parallel and its result does not block this deploy.
+    # Gated on BOTH the unit/widget suite and the E2E suite.
     if: github.event_name != 'pull_request'
 
     steps:

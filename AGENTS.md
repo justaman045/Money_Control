@@ -68,6 +68,9 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 
 ```bash
 # Credentials come from CI secrets; paste as --dart-define for local runs.
+# CI instead runs tool/run_integration_tests.sh, which loops the files one by
+# one (15m timeout each) and pulls screenshots incrementally into
+# build/report/parts + build/report/screenshots.
 flutter test integration_test -d emulator-5554 --no-uninstall \
   --dart-define=TEST_EMAIL=... --dart-define=TEST_PASSWORD=... \
   --file-reporter json:build/report/integration.json
@@ -75,6 +78,8 @@ mkdir -p build/report/screenshots
 adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read f; do
   adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$f" > "build/report/screenshots/$f"
 done
+# --integration accepts a single file or a comma-separated list (one per
+# `flutter test` invocation); each file is parsed independently.
 dart run tool/generate_test_report.dart --unit=build/report/unit.json \
   --integration=build/report/integration.json \
   --screenshots=build/report/screenshots --out=build/report/report.html
