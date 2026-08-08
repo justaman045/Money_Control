@@ -29,7 +29,7 @@ class _TestResult {
   String? stackTrace;
 }
 
-Future<List<_TestResult>> _parseResults(String path) async {
+Future<List<_TestResult>> _parseResults(String path, {String? suiteLabel}) async {
   final file = File(path);
   if (!file.existsSync()) {
     stderr.writeln('WARNING: results file not found: $path');
@@ -57,10 +57,14 @@ Future<List<_TestResult>> _parseResults(String path) async {
       final hidden = testObj['hidden'] == true;
       if (hidden) continue;
       final name = testObj['name'];
-      final url = testObj['url'];
-      final suite = (url is String && url.isNotEmpty)
-          ? url.split('/').last
-          : 'suite-${suiteCounter++}';
+      // Integration test JSON urls resolve to framework files (widget_tester.dart,
+      // integration_test.dart) rather than the *_test.dart file that was run, so
+      // the caller passes the part-file base name as the suite label.
+      final suite = (suiteLabel != null && suiteLabel.isNotEmpty)
+          ? suiteLabel
+          : (testObj['url'] is String && (testObj['url'] as String).isNotEmpty)
+              ? (testObj['url'] as String).split('/').last
+              : 'suite-${suiteCounter++}';
       tests[id] = _TestResult(name is String ? name : 'test $id', suite);
     } else if (type == 'testDone') {
       final id = map['testID'];
@@ -149,7 +153,15 @@ Future<void> main(List<String> args) async {
     for (final p in integrationPath.split(',')) {
       final trimmed = p.trim();
       if (trimmed.isEmpty) continue;
-      integrationResults.addAll(await _parseResults(trimmed));
+      // Part files are named <basename>.json under build/report/parts (set by
+      // tool/run_integration_tests.sh). Derive the suite label from that name
+      // so INTERRUPTED matching works: integration JSON urls point at framework
+      // files, not the *_test.dart that actually ran.
+      final base = trimmed.split('/').last;
+      final label = base.endsWith('.json')
+          ? '${base.substring(0, base.length - 5)}.dart'
+          : '';
+      integrationResults.addAll(await _parseResults(trimmed, suiteLabel: label));
     }
   }
 
