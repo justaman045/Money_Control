@@ -3,8 +3,10 @@
 // deterministically in CI (fresh emulator, live Firebase account).
 
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:integration_test/integration_test.dart';
@@ -29,16 +31,58 @@ Future<void> _saveScreenshot(WidgetTester tester, List<int> bytes, String name) 
   await File('${dir.path}/$name.png').writeAsBytes(bytes);
 }
 
-/// Captures the current screen to the device cache. Android only: requires
-/// `convertFlutterSurfaceToImage()` (called at the start of
-/// [testWidgetsWithScreenshots]) and a fresh frame before capture.
-/// Prints the outcome so CI logs reveal whether `takeScreenshot` itself fails.
+/// Captures the current frame via the Flutter engine (rasterizes the root
+/// layer offscreen). Unlike `binding.takeScreenshot`, this needs no
+/// `convertFlutterSurfaceToImage()` surface swap, so it works on the emulator's
+/// fragile gfxstream GL layer and never stresses the ColorBuffer/PixelCopy
+/// path that has wedged the CI emulator mid-suite. Returns null on any failure
+/// so callers fall back to the PixelCopy path.
+Future<List<int>?> _captureEngine() async {
+  try {
+    final views = RendererBinding.instance.renderViews;
+    if (views.isEmpty) return null;
+    final view = views.first;
+    // `debugLayer` is the same accessor flutter_test's goldens use (the public
+    // `layer` member is protected); integration tests run in debug mode so it
+    // is non-null after the first frame.
+    final layer = view.debugLayer;
+    if (layer is! OffsetLayer) return null;
+    final image = await layer.toImage(view.paintBounds);
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data?.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
+  } catch (e) {
+    // ignore: avoid_print
+    print('Engine screenshot failed: $e');
+    return null;
+  }
+}
+
+/// Captures the current screen to the device cache. Primary path is engine
+/// rasterization ([_captureEngine]); falls back to `binding.takeScreenshot`
+/// (which needs `convertFlutterSurfaceToImage()`, applied lazily here) when the
+/// engine path yields nothing.
+/// Prints the outcome so CI logs reveal which path (and whether capture) fails.
 Future<void> captureScreenshot(WidgetTester tester, String name) async {
   try {
-    final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
     await tester.pump();
-    final bytes = await binding.takeScreenshot(name);
-    if (bytes.isEmpty) {
+    var bytes = await _captureEngine();
+    if (bytes == null || bytes.isEmpty) {
+      try {
+        final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+        await binding.convertFlutterSurfaceToImage();
+        await tester.pump();
+        final shot = await binding.takeScreenshot(name);
+        if (shot.isNotEmpty) bytes = shot;
+      } catch (e) {
+        // ignore: avoid_print
+        print('Fallback screenshot failed for $name: $e');
+      }
+    }
+    if (bytes == null || bytes.isEmpty) {
       // ignore: avoid_print
       print('Screenshot capture empty for $name');
       return;
@@ -55,19 +99,13 @@ Future<void> captureScreenshot(WidgetTester tester, String name) async {
 /// [testWidgets] variant that automatically captures a screenshot of the exact
 /// failing state to the device cache. Useful for debugging flaky E2E runs in
 /// CI without `flutter drive` (no host callback exists under `flutter test`).
+/// No `convertFlutterSurfaceToImage()` is applied up front — capture uses the
+/// engine path by default and swaps surfaces lazily only when it falls back.
 void testWidgetsWithScreenshots(
   String description,
   Future<void> Function(WidgetTester tester) body,
 ) {
   testWidgets(description, (tester) async {
-    final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-    try {
-      await binding.convertFlutterSurfaceToImage();
-      await tester.pump();
-    } catch (e) {
-      // ignore: avoid_print
-      print('convertFlutterSurfaceToImage failed: $e');
-    }
     try {
       await body(tester);
       await captureScreenshot(tester, 'result_${sanitizeName(description)}');

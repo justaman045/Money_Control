@@ -70,7 +70,10 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 # Credentials come from CI secrets; paste as --dart-define for local runs.
 # CI instead runs tool/run_integration_tests.sh, which loops the files one by
 # one (15m timeout each) and pulls screenshots incrementally into
-# build/report/parts + build/report/screenshots.
+# build/report/parts + build/report/screenshots. If a file fails while the
+# emulator's adb connection is offline (gfxstream wedge), the script recovers
+# the device once and retries that file; real test failures (device reachable)
+# are never retried.
 flutter test integration_test -d emulator-5554 --no-uninstall \
   --dart-define=TEST_EMAIL=... --dart-define=TEST_PASSWORD=... \
   --file-reporter json:build/report/integration.json
@@ -116,7 +119,7 @@ CI (`.github/workflows/flutter_build.yml`): analyze → unit/widget test → int
 5. **`_InviteFriendsCard` listener needs an `onError`** — the `users/{email}` snapshots stream errors with permission-denied after sign-out; without the handler the settings sign-out test fails on an unhandled exception (`settings.dart`).
 6. **Data-dependent analytics markers** — 'Monthly Trend' only renders with ≥2 months of data ('Current Period' otherwise), and 'Expense Breakdown' needs non-zero expenses. `analytics_insights_test.dart` seeds an expense + income first and accepts either trend title. |
 7. **`flutter test` uninstalls the app after integration runs** — the `--uninstall` flag defaults to true (Flutter tool), wiping the device cache that holds the screenshots. Always pass `--no-uninstall` (CI does) so the `adb exec-out run-as ... cat` pull after the run finds them. Per-file reinstalls use `adb install -r`, so screenshots accumulate across test files while the app stays installed.
-8. **`testWidgetsWithScreenshots` auto-captures screenshots** — every integration test uses the wrapper in `test_helpers.dart`; on success it writes `result_<name>.png` to `<app cache>/screenshots/`, on failure `failure_<name>.png` (error is rethrown so the test still fails). `tool/generate_test_report.dart` embeds them base64 into the single-file `report.html`; new integration tests must keep using the wrapper so their screenshots land in the report.
+8. **`testWidgetsWithScreenshots` auto-captures screenshots** — every integration test uses the wrapper in `test_helpers.dart`; on success it writes `result_<name>.png` to `<app cache>/screenshots/`, on failure `failure_<name>.png` (error is rethrown so the test still fails). Capture is engine-first (`layer.toImage()` — no `convertFlutterSurfaceToImage()` surface swap, which is what stresses the emulator's fragile gfxstream ColorBuffer path); it falls back to `binding.takeScreenshot()` only if the engine path yields nothing. `tool/generate_test_report.dart` embeds them base64 into the single-file `report.html`; new integration tests must keep using the wrapper so their screenshots land in the report. FAIL rows with no error text are labeled **HOST LOST** — the emulator/adb connection dropped mid-test (an infra failure, never a test assertion).
 
 ThemeController is inline in `main.dart` (registered before any screen). Note: `PerformanceController` and `ConnectivityController` are GetX controllers but live in `lib/Services/` (not `lib/Controllers/`).
 

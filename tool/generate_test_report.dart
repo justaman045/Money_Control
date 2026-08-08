@@ -171,22 +171,40 @@ Future<void> main(List<String> args) async {
   final total = allResults.length;
 
   String renderRow(_TestResult test, {bool isIntegration = false}) {
+    // A FAIL with no error and no stack trace is a host-side connection loss
+    // (the emulator/adb died mid-test), not a Dart assertion — label it so it
+    // is not mistaken for a test bug.
+    final hostLost = test.status == 'failure' &&
+        test.error == null &&
+        test.stackTrace == null;
     final badge = switch (test.status) {
       'success' => '<span class="badge pass">PASS</span>',
       'skipped' => '<span class="badge skip">SKIP</span>',
       'pending' => '<span class="badge int">INTERRUPTED</span>',
-      _ => '<span class="badge fail">FAIL</span>',
+      _ => hostLost
+          ? '<span class="badge lost">HOST LOST</span>'
+          : '<span class="badge fail">FAIL</span>',
     };
     final shotPrefix = test.status == 'failure' ? 'failure_' : 'result_';
     final shotName = '$shotPrefix${_sanitize(test.name)}.png';
-    final shotData = screenshotsByName[shotName];
+    // Per-file fallback keyed on the part-file base name (suite URL minus its
+    // `.dart` extension), e.g. failure_analytics_insights_test.png.
+    final suiteBase = _sanitize(test.suite.replaceFirst(RegExp(r'\.dart$'), ''));
+    var shotData = screenshotsByName[shotName];
+    if (shotData == null && test.status == 'failure') {
+      shotData = screenshotsByName['failure_$suiteBase.png'];
+    }
+    final lostHint = hostLost
+        ? '<p class="empty">No error reported — the emulator/adb connection '
+            'was lost, not a test assertion.</p>'
+        : '';
     final errorBlock = (test.error == null && test.stackTrace == null)
         ? ''
         : '<details><summary>Error details</summary>'
             '<pre>${_escapeHtml(test.error ?? '')}\n'
             '${_escapeHtml(test.stackTrace ?? '')}</pre></details>';
     final shotBlock = shotData == null
-        ? ''
+        ? (test.status == 'failure' ? '<p class="empty">no screenshot</p>' : '')
         : '<details open><summary>'
             '${test.status == 'failure' ? 'Failure' : 'Result'} screenshot</summary>'
             '<img alt="$shotPrefix screenshot" '
@@ -196,7 +214,7 @@ Future<void> main(List<String> args) async {
         '<td class="suite">${_escapeHtml(test.suite)}</td>'
         '<td>${_escapeHtml(test.name)}</td>'
         '<td class="dur">${_fmtDuration(test.timeMs)}</td>'
-        '<td>$errorBlock$shotBlock</td>'
+        '<td>$lostHint$errorBlock$shotBlock</td>'
         '</tr>';
   }
 
@@ -223,6 +241,7 @@ Future<void> main(List<String> args) async {
         'color:#fff;font-size:12px;font-weight:600}'
         '.badge.pass{background:#16a34a}.badge.fail{background:#dc2626}'
         '.badge.skip{background:#d97706}.badge.int{background:#7c3aed}'
+        '.badge.lost{background:#7f1d1d}'
         '.suite{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b7280}'
         '.dur{white-space:nowrap;color:#6b7280}'
         'details{margin-top:4px}summary{cursor:pointer;font-size:13px;'
