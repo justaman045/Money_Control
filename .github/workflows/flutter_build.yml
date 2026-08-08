@@ -69,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name != 'pull_request'
-    timeout-minutes: 180
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -103,13 +103,18 @@ jobs:
           disable-animations: true
           script: |
             set -e
-            mkdir -p build/report
-            flutter test integration_test -d emulator-5554 --no-uninstall --dart-define=TEST_EMAIL=${{ secrets.TEST_EMAIL }} --dart-define=TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} --file-reporter json:build/report/integration.json || FLUTTER_EXIT=$?
-            mkdir -p build/report/screenshots
-            adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read f; do
-              adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$f" > "build/report/screenshots/$f" 2>/dev/null || true
+            mkdir -p build/report/parts build/report/screenshots
+            FLUTTER_EXIT=0
+            for f in integration_test/*_test.dart; do
+              name=$(basename "$f" .dart)
+              echo "=== Running $name ==="
+              timeout 15m flutter test "$f" -d emulator-5554 --no-uninstall --dart-define=TEST_EMAIL=${{ secrets.TEST_EMAIL }} --dart-define=TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} --file-reporter "json:build/report/parts/$name.json" || FLUTTER_EXIT=$?
+              adb shell run-as app.vercel.justaman045.money_control ls -1 cache/screenshots 2>/dev/null | while read g; do
+                [ -f "build/report/screenshots/$g" ] || adb exec-out run-as app.vercel.justaman045.money_control cat "cache/screenshots/$g" > "build/report/screenshots/$g" 2>/dev/null || true
+              done
+              echo "--- screenshots pulled so far: $(ls build/report/screenshots 2>/dev/null | wc -l)"
             done
-            exit "${FLUTTER_EXIT:-0}"
+            exit $FLUTTER_EXIT
 
       - name: Download unit test report
         if: always()
@@ -120,7 +125,7 @@ jobs:
 
       - name: Generate combined test report
         if: always()
-        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --integration=build/report/integration.json --screenshots=build/report/screenshots --out=build/report/report.html
+        run: dart run tool/generate_test_report.dart --unit=build/report/unit.json --integration="$(ls build/report/parts/*.json | paste -sd,)" --screenshots=build/report/screenshots --out=build/report/report.html
 
       - name: Upload integration test report
         if: always()

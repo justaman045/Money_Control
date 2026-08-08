@@ -5,9 +5,13 @@
 // Usage:
 //   dart run tool/generate_test_report.dart \
 //     --unit=build/report/unit.json \
-//     --integration=build/report/integration.json \
+//     --integration=parts/a.json,parts/b.json \
 //     --screenshots=build/report/screenshots \
 //     --out=build/report/report.html
+//
+// --integration accepts a comma-separated list of JSON reporter files (one per
+// `flutter test` invocation); each file is parsed independently so test IDs
+// that restart across runs never collide.
 //
 // All arguments are optional; missing inputs produce a report with a "no data"
 // note and exit code 0 (so CI artifacts are still uploaded on red runs).
@@ -140,9 +144,14 @@ Future<void> main(List<String> args) async {
   final outPath = argValue('--out');
 
   final unitResults = unitPath.isEmpty ? <_TestResult>[] : await _parseResults(unitPath);
-  final integrationResults = integrationPath.isEmpty
-      ? <_TestResult>[]
-      : await _parseResults(integrationPath);
+  final integrationResults = <_TestResult>[];
+  if (integrationPath.isNotEmpty) {
+    for (final p in integrationPath.split(',')) {
+      final trimmed = p.trim();
+      if (trimmed.isEmpty) continue;
+      integrationResults.addAll(await _parseResults(trimmed));
+    }
+  }
   final screenshots = screenshotsDir.isEmpty
       ? <Map<String, String>>[]
       : _loadScreenshots(screenshotsDir);
@@ -165,6 +174,7 @@ Future<void> main(List<String> args) async {
     final badge = switch (test.status) {
       'success' => '<span class="badge pass">PASS</span>',
       'skipped' => '<span class="badge skip">SKIP</span>',
+      'pending' => '<span class="badge int">INTERRUPTED</span>',
       _ => '<span class="badge fail">FAIL</span>',
     };
     final shotPrefix = test.status == 'failure' ? 'failure_' : 'result_';
@@ -212,7 +222,7 @@ Future<void> main(List<String> args) async {
         '.badge{display:inline-block;padding:2px 8px;border-radius:9999px;'
         'color:#fff;font-size:12px;font-weight:600}'
         '.badge.pass{background:#16a34a}.badge.fail{background:#dc2626}'
-        '.badge.skip{background:#d97706}'
+        '.badge.skip{background:#d97706}.badge.int{background:#7c3aed}'
         '.suite{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#6b7280}'
         '.dur{white-space:nowrap;color:#6b7280}'
         'details{margin-top:4px}summary{cursor:pointer;font-size:13px;'

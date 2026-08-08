@@ -32,12 +32,20 @@ Future<void> _saveScreenshot(WidgetTester tester, List<int> bytes, String name) 
 /// Captures the current screen to the device cache. Android only: requires
 /// `convertFlutterSurfaceToImage()` (called at the start of
 /// [testWidgetsWithScreenshots]) and a fresh frame before capture.
+/// Prints the outcome so CI logs reveal whether `takeScreenshot` itself fails.
 Future<void> captureScreenshot(WidgetTester tester, String name) async {
   try {
     final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
     await tester.pump();
     final bytes = await binding.takeScreenshot(name);
+    if (bytes.isEmpty) {
+      // ignore: avoid_print
+      print('Screenshot capture empty for $name');
+      return;
+    }
     await _saveScreenshot(tester, bytes, name);
+    // ignore: avoid_print
+    print('Screenshot captured: $name (${bytes.length} bytes)');
   } catch (e) {
     // ignore: avoid_print
     print('Screenshot capture failed for $name: $e');
@@ -56,7 +64,10 @@ void testWidgetsWithScreenshots(
     try {
       await binding.convertFlutterSurfaceToImage();
       await tester.pump();
-    } catch (_) {}
+    } catch (e) {
+      // ignore: avoid_print
+      print('convertFlutterSurfaceToImage failed: $e');
+    }
     try {
       await body(tester);
       await captureScreenshot(tester, 'result_${sanitizeName(description)}');
