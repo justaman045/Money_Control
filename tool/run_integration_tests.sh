@@ -12,6 +12,11 @@
 # for every remaining file. Real test failures (device still reachable) are NOT
 # retried — a genuine bug should not silently double its CI time.
 #
+# Recovery only helps an adb wedge — it can never revive a dead emulator
+# PROCESS (qemu gone, port 5554 refused). If recovery fails once, the emulator
+# is presumed dead and every remaining file is skipped fast (a ~2 min tail)
+# instead of burning ~85 s of futile recovery per file.
+#
 # Credentials come from the environment (set as step env on the calling
 # workflow), never interpolated into this file.
 #
@@ -69,8 +74,15 @@ pull_screenshots() {
 }
 
 FLUTTER_EXIT=0
+EMULATOR_DEAD=0
+DEAD_SINCE=""
 for f in integration_test/*_test.dart; do
   name=$(basename "$f" .dart)
+  if [ "$EMULATOR_DEAD" = "1" ]; then
+    echo "SKIP: $name (emulator confirmed dead after $DEAD_SINCE — no recovery attempt)."
+    FLUTTER_EXIT=1
+    continue
+  fi
   echo "=== Running $name ==="
   if ! run_file "$f" "$name"; then
     if device_ok; then
@@ -88,8 +100,10 @@ for f in integration_test/*_test.dart; do
           echo "FAIL on retry: $name"
         fi
       else
+        EMULATOR_DEAD=1
+        DEAD_SINCE="$name"
         FLUTTER_EXIT=1
-        echo "FAIL: $name (emulator unreachable after recovery)."
+        echo "FAIL: $name (emulator unreachable after recovery — treating emulator as dead; remaining files will be skipped fast)."
       fi
     fi
   fi

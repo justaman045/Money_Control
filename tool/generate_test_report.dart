@@ -152,6 +152,37 @@ Future<void> main(List<String> args) async {
       integrationResults.addAll(await _parseResults(trimmed));
     }
   }
+
+  // Files in integration_test/ that produced no JSON reporter output (the
+  // emulator died, or the suite was skipped) are rendered as INTERRUPTED rows
+  // so the report reflects the full suite instead of silently dropping files.
+  final expectedSuites = <String>[];
+  final integrationTestDir = Directory('integration_test');
+  if (integrationTestDir.existsSync()) {
+    for (final entry in integrationTestDir.listSync(followLinks: false)) {
+      if (entry is File && entry.path.endsWith('_test.dart')) {
+        expectedSuites.add(entry.uri.pathSegments.last);
+      }
+    }
+    expectedSuites.sort();
+  }
+  final presentSuites = integrationResults.map((r) => r.suite).toSet();
+  final providedParts = integrationPath.isEmpty
+      ? <String>[]
+      : integrationPath
+          .split(',')
+          .map((p) => p.trim().split('/').last)
+          .where((p) => p.isNotEmpty)
+          .toSet();
+  for (final suite in expectedSuites) {
+    if (presentSuites.contains(suite)) continue;
+    final reason = providedParts.contains(suite.replaceFirst('.dart', '.json'))
+        ? 'The runner reported no tests for this file.'
+        : 'Not executed — the emulator died or the suite was skipped.';
+    integrationResults.add(_TestResult('not executed', suite)
+      ..status = 'pending'
+      ..error = reason);
+  }
   final screenshots = screenshotsDir.isEmpty
       ? <Map<String, String>>[]
       : _loadScreenshots(screenshotsDir);

@@ -101,7 +101,8 @@ jobs:
           arch: x86_64
           target: google_apis
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu guest -noaudio -no-boot-anim -camera-back none -no-metrics
+          cores: 4
           disable-animations: true
           # Invoked as a single line because this action executes its `script:`
           # input one line at a time via `/usr/bin/sh -c` — multi-line loops
