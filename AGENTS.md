@@ -69,13 +69,14 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 ```bash
 # Credentials come from CI secrets; paste as --dart-define for local runs.
 # CI instead runs tool/run_integration_tests.sh, which loops the files one by
-# one (15m timeout each) and pulls screenshots incrementally into
-# build/report/parts + build/report/screenshots. If a file fails while the
-# emulator's adb connection is offline (gfxstream wedge), the script recovers
-# the device once and retries that file; real test failures (device reachable)
-# are never retried. If recovery fails ONCE, the emulator process is presumed
-# dead (qemu gone — `adb reconnect` cannot revive it) and all remaining files
-# are skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
+# one (15m timeout each), restarts the emulator process before every file after
+# the first (fresh qemu = clean host GL state, see gotcha #9), and pulls
+# screenshots incrementally into build/report/parts + build/report/screenshots.
+# If a file fails while the emulator's adb connection is offline, the script
+# recovers the device once and retries that file; real test failures (device
+# reachable) are never retried. If recovery AND a full emulator restart both
+# fail, the emulator process is presumed dead and all remaining files are
+# skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
 # and renders any file with no JSON part as an INTERRUPTED row, so the report
 # always reflects all 17 files, not just the ones that produced output.
 flutter test integration_test -d emulator-5554 --no-uninstall \
@@ -124,7 +125,7 @@ CI (`.github/workflows/flutter_build.yml`): analyze → unit/widget test → int
 6. **Data-dependent analytics markers** — 'Monthly Trend' only renders with ≥2 months of data ('Current Period' otherwise), and 'Expense Breakdown' needs non-zero expenses. `analytics_insights_test.dart` seeds an expense + income first and accepts either trend title. |
 7. **`flutter test` uninstalls the app after integration runs** — the `--uninstall` flag defaults to true (Flutter tool), wiping the device cache that holds the screenshots. Always pass `--no-uninstall` (CI does) so the `adb exec-out run-as ... cat` pull after the run finds them. Per-file reinstalls use `adb install -r`, so screenshots accumulate across test files while the app stays installed.
 8. **`testWidgetsWithScreenshots` auto-captures screenshots** — every integration test uses the wrapper in `test_helpers.dart`; on success it writes `result_<name>.png` to `<app cache>/screenshots/`, on failure `failure_<name>.png` (error is rethrown so the test still fails). Capture is engine-first (`layer.toImage()` — no `convertFlutterSurfaceToImage()` surface swap, which is what stresses the emulator's fragile gfxstream ColorBuffer path); it falls back to `binding.takeScreenshot()` only if the engine path yields nothing. `tool/generate_test_report.dart` embeds them base64 into the single-file `report.html`; new integration tests must keep using the wrapper so their screenshots land in the report. FAIL rows with no error text are labeled **HOST LOST** — the emulator/adb connection dropped mid-test (an infra failure, never a test assertion).
-9. **Emulator dies under host gfxstream — recovery can't fix a dead process** — `analytics_insights_test` deterministically killed the emulator process (qemu gone; `adb -s emulator-5554 emu kill` at job end failed with `Connection refused` on TCP 5554) after ~7 min in two consecutive runs, with `Failed to find ColorBuffer: 251` on the host GL path. Fix: `-gpu guest` (in-guest software rendering, removes the host ColorBuffer path entirely) + `cores: 4` + `-no-metrics` in `flutter_build.yml`. The script's `recover_device()` only helps an adb wedge — after the first failed recovery it sets `EMULATOR_DEAD` and skips remaining files in ~1 s each instead of burning ~85 s of futile recovery per file.
+9. **Emulator dies from host-GL accumulation across app launches — restart between files** — `analytics_insights_test` deterministically killed the emulator process (qemu gone; `adb -s emulator-5554 emu kill` at job end failed with `Connection refused` on TCP 5554) after ~7 min in three consecutive runs. The death is tied to the SECOND app launch: `add_transaction_test` (first file) always survives ~11 min, the second file dies ~7 min in. `-gpu guest` does NOT help (API 34 google_apis image doesn't support guest rendering — it silently falls back to host `lavapipe`). Fix: `restart_emulator()` in `tool/run_integration_tests.sh` kills qemu and boots a fresh emulator before every file after the first, so each file runs as a first app instance on clean host GL state. `recover_device()` only helps an adb wedge — after recovery fails the script tries a full restart, and only gives up (setting `EMULATOR_DEAD`, skipping remaining files fast) when the restart itself fails.
 
 ThemeController is inline in `main.dart` (registered before any screen). Note: `PerformanceController` and `ConnectivityController` are GetX controllers but live in `lib/Services/` (not `lib/Controllers/`).
 
