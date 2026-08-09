@@ -18,6 +18,7 @@ import 'package:get/get.dart';
 import 'package:money_control/Controllers/transaction_controller.dart';
 import 'package:money_control/Repositories/transaction_repository.dart';
 import 'package:money_control/Screens/cateogary_history.dart';
+import 'package:money_control/Services/performance_controller.dart';
 
 class AIInsightsScreen extends StatefulWidget {
   final bool showNavigation;
@@ -567,6 +568,7 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
   // ---------------- Forecast Card --------------------
 
   Widget _buildForecastCard(ColorScheme scheme) {
+    final lite = PerformanceController.to.liteMode.value;
     final total = forecastTotal;
     final spent = currentMonthSpent;
     final pct = total > 0 ? (spent / total).clamp(0.0, 1.0) : 0.0;
@@ -605,14 +607,19 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
           ],
         ),
         borderRadius: BorderRadius.circular(26.r),
-        boxShadow: [
-          // "Glow" Effect
-          BoxShadow(
-            color: const Color(0xFF6C63FF).withValues(alpha: 0.4),
-            blurRadius: 20.w,
-            offset: Offset(0, 10.w),
-          ),
-        ],
+        // The glow shadow is multi-pass blur under software rendering and
+        // crashed the CI emulator's GL stack after ~2m of this screen — skip it
+        // in lite mode (the emulator auto-detects lite mode on ≤4 cores).
+        boxShadow: lite
+            ? null
+            : [
+                // "Glow" Effect
+                BoxShadow(
+                  color: const Color(0xFF6C63FF).withValues(alpha: 0.4),
+                  blurRadius: 20.w,
+                  offset: Offset(0, 10.w),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,6 +745,7 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
   // --------------- Daily Limit Card ------------------
 
   Widget _buildDailyLimitCard(ColorScheme scheme) {
+    final lite = PerformanceController.to.liteMode.value;
     final now = DateTime.now();
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final daysPassed = now.day;
@@ -803,13 +811,15 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
             scheme.surface.withValues(alpha: 0.6),
           ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 15.w,
-            offset: Offset(0, 8.w),
-          ),
-        ],
+        boxShadow: lite
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 15.w,
+                  offset: Offset(0, 8.w),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -888,6 +898,7 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
   // ---------------- Calendar Heatmap -----------------
 
   Widget _buildHeatmapCard(ColorScheme scheme) {
+    final lite = PerformanceController.to.liteMode.value;
     final now = DateTime.now();
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
 
@@ -931,13 +942,15 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
             scheme.surface.withValues(alpha: 0.8),
           ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 15.w,
-            offset: Offset(0, 8.w),
-          ),
-        ],
+        boxShadow: lite
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 15.w,
+                  offset: Offset(0, 8.w),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1019,7 +1032,7 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
                                 : AppColors.lightBorder,
                           ),
                     boxShadow: [
-                      if (intensity > 0.3)
+                      if (!lite && intensity > 0.3)
                         BoxShadow(
                           color: Colors.green.withValues(alpha: 0.3),
                           blurRadius: 4.w,
@@ -1059,6 +1072,7 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
   // ---------------- Category Insight Card ------------
 
   Widget _buildInsightCard(CategoryInsight c, ColorScheme scheme) {
+    final lite = PerformanceController.to.liteMode.value;
     final trendColor = c.trendPercent >= 0
         ? Colors.redAccent
         : Colors.green.shade700;
@@ -1100,13 +1114,15 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
         decoration: BoxDecoration(
           color: scheme.surface,
           borderRadius: BorderRadius.circular(20.r),
-          boxShadow: [
-            BoxShadow(
-              color: scheme.onSurface.withValues(alpha: 0.03),
-              blurRadius: 10.w,
-              offset: Offset(0, 4.w),
-            ),
-          ],
+          boxShadow: lite
+              ? null
+              : [
+                  BoxShadow(
+                    color: scheme.onSurface.withValues(alpha: 0.03),
+                    blurRadius: 10.w,
+                    offset: Offset(0, 4.w),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

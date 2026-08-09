@@ -9,9 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:get/get.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:money_control/Components/bottom_nav_bar.dart';
 import 'package:money_control/main.dart' as app;
+import 'package:money_control/Services/performance_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'test_credentials.dart';
 
@@ -404,6 +406,13 @@ Future<bool> loginIfNeeded(WidgetTester tester) async {
 Future<void> launchAndSignIn(WidgetTester tester) async {
   await app.mainCommon(isTest: true);
   await pumpAndSettleSafe(tester, timeout: const Duration(seconds: 5));
+  // The CI emulator's software GL stack (swiftshader) segfaults after ~2m of
+  // the AI Insights screen's heavy blurred cards. Force lite mode for every
+  // integration run so heavy blur shadows/confetti are skipped app-wide
+  // (analysis.dart gates its card shadows on liteMode).
+  if (Get.isRegistered<PerformanceController>()) {
+    await PerformanceController.to.setLiteMode(true);
+  }
   await handleSplashAndOnboarding(tester);
   await pumpAndSettleSafe(tester);
   await loginIfNeeded(tester);
