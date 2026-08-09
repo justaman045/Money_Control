@@ -9,8 +9,17 @@
 # If a file fails because the emulator's adb connection dropped (gfxstream
 # wedges on this headless setup), the device is recovered once and the file is
 # retried, so one emulator hiccup can't cascade into "no device found" failures
-# for every remaining file. Real test failures (device still reachable) are NOT
-# retried — a genuine bug should not silently double its CI time.
+# for every remaining file. Real test failures (device still reachable, test
+# events emitted) are NOT retried — a genuine bug should not silently double
+# its CI time.
+#
+# The one exception is a launch-level failure (device still reachable): the 15m
+# timeout kill (exit 124) signals the app froze/ANR'd under the software
+# renderer and never printed a result, and an empty reporter file signals the
+# app never connected or the tool died before any output. Both can leave the
+# emulator in a bad state, so they are retried once on a fresh qemu — a genuine
+# bug will just fail the retry too. A failure that also took the device offline
+# flows through the recovery path instead.
 #
 # Recovery only helps an adb wedge — it can never revive a dead emulator
 # PROCESS (qemu gone, port 5554 refused). If recovery fails once, the emulator
@@ -138,13 +147,49 @@ for f in integration_test/*_test.dart; do
   fi
   FIRST_FILE=0
   echo "=== Running $name ==="
-  if ! run_file "$f" "$name"; then
-    if device_ok; then
-      # Device reachable → this is a real test failure, not emulator loss.
-      FLUTTER_EXIT=1
-      FAIL_COUNT=$((FAIL_COUNT + 1))
-      echo "FAIL: $name (test failure, device reachable — no retry)."
+  run_file "$f" "$name"
+  RC=$?
+  if [ "$RC" -eq 0 ]; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+  elif device_ok && { [ "$RC" = "124" ] || [ ! -s "build/report/parts/$name.json" ]; }; then
+    # Launch-level failure: either the 15m timeout killed the file (the app
+    # froze/ANR'd under the software renderer and never printed a result) or
+    # the run ended without a single test event (the app never connected or
+    # the tool died before any output). Both can leave the emulator in a bad
+    # state, so retry once on a fresh qemu — a genuine bug will just fail the
+    # retry too. A hang where the device ALSO went offline falls through to
+    # the offline-recovery path below.
+    if [ "$RC" = "124" ]; then
+      launch_reason="15m timeout, device reachable (hang)"
     else
+      launch_reason="no test events, device reachable"
+    fi
+    echo "FAIL: $name ($launch_reason — restarting emulator and retrying once)."
+    if restart_emulator; then
+      pull_screenshots
+      run_file "$f" "$name"
+      RC2=$?
+      if [ "$RC2" -eq 0 ]; then
+        PASS_COUNT=$((PASS_COUNT + 1))
+        echo "PASS on launch-retry: $name"
+      else
+        FLUTTER_EXIT=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        echo "FAIL on launch-retry: $name"
+      fi
+    else
+      EMULATOR_DEAD=1
+      DEAD_SINCE="$name"
+      FLUTTER_EXIT=1
+      echo "FAIL: $name (emulator restart failed after launch-level failure — treating emulator as dead; remaining files will be skipped fast)."
+    fi
+  elif device_ok; then
+    # Device reachable and the run produced real test events → this is a
+    # genuine test failure, not emulator loss.
+    FLUTTER_EXIT=1
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    echo "FAIL: $name (test failure, device reachable — no retry)."
+  else
       echo "FAIL: $name (device offline — attempting one recovery + retry)."
       if recover_device; then
         pull_screenshots
@@ -172,9 +217,6 @@ for f in integration_test/*_test.dart; do
         FLUTTER_EXIT=1
         echo "FAIL: $name (emulator unreachable after recovery and restart — treating emulator as dead; remaining files will be skipped fast)."
       fi
-    fi
-  else
-    PASS_COUNT=$((PASS_COUNT + 1))
   fi
   pull_screenshots
 done

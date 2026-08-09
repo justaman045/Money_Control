@@ -74,9 +74,13 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 # screenshots incrementally into build/report/parts + build/report/screenshots.
 # If a file fails while the emulator's adb connection is offline, the script
 # recovers the device once and retries that file; real test failures (device
-# reachable) are never retried. If recovery AND a full emulator restart both
-# fail, the emulator process is presumed dead and all remaining files are
-# skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
+# reachable, test events emitted) are never retried. Exception: a launch-level
+# failure with the device still reachable is retried once on a fresh qemu —
+# either the 15m timeout was hit (exit 124: the app froze/ANR'd under the
+# software renderer and never printed a result) or the reporter file ended up
+# empty (the app never connected / the tool died before any output). If
+# recovery AND a full emulator restart both fail, the emulator process is
+# presumed dead and all remaining files are skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
 # and renders any file with no JSON part as an INTERRUPTED row, so the report
 # always reflects all 19 files, not just the ones that produced output.
 flutter test integration_test -d emulator-5554 --no-uninstall \
