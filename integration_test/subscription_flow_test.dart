@@ -46,15 +46,26 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), '499');
     await pumpReal(tester);
 
-    // Save
-    await tapUntilMarker(tester, find.text('Save'), find.text(name));
+    // Save — then wait for the sheet to actually close (its 'New Subscription'
+    // title matches the still-open sheet's TextField, so it can't be the
+    // success marker) and the new card to render with its amount.
+    await tapWhenVisible(tester, find.text('Save'));
+    await waitForGone(tester, find.text('New Subscription'));
+    await waitFor(tester, find.text('₹499'));
 
     // Verify Creation
     expect(find.text(name), findsWidgets);
     expect(find.text('₹499'), findsWidgets);
 
     // 6. Edit Subscription (Change Date)
-    final editIcon = find.byIcon(Icons.edit_rounded).first;
+    // Scope the edit icon to the card we just created — the list holds many
+    // payments and `.first` may resolve to an unrelated card.
+    final card = find
+        .ancestor(of: find.text(name), matching: find.byType(GestureDetector))
+        .first;
+    final editIcon = find
+        .descendant(of: card, matching: find.byIcon(Icons.edit_rounded))
+        .first;
     await tapUntilMarker(tester, editIcon, find.text('Edit Subscription'));
     expect(find.text('Edit Subscription'), findsOneWidget);
 
@@ -72,17 +83,28 @@ void main() {
     await tapWhenVisible(tester, find.text('Save'));
 
     // 7. Pay (Mark as Paid)
-    await tapUntilMarker(tester, find.text(name).first, find.text('Subscription Details'));
+    await tapUntilMarker(
+      tester,
+      find.text(name).first,
+      find.text('Subscription Details'),
+    );
     expect(find.text('Subscription Details'), findsOneWidget);
 
     await tapUntilMarker(tester, find.text('Mark Paid'), find.text('Confirm'));
 
     // Confirm Dialog
     expect(find.text('Confirm'), findsOneWidget);
-    await tapUntilMarker(tester, find.text('Confirm'), find.text('Payment History'));
+    await tapUntilMarker(
+      tester,
+      find.text('Confirm'),
+      find.text('Payment History'),
+    );
 
     // Check History List for transaction
-    await pumpReal(tester, const Duration(seconds: 3)); // Wait for Firestore update
+    await pumpReal(
+      tester,
+      const Duration(seconds: 3),
+    ); // Wait for Firestore update
     expect(find.text('Payment History'), findsOneWidget);
     expect(find.textContaining('499'), findsWidgets);
 
@@ -103,7 +125,11 @@ void main() {
     expect(find.textContaining('499', skipOffstage: false), findsWidgets);
 
     // 9. Verify Details from Home
-    await tapUntilMarker(tester, find.text(name).first, find.text('Transaction Details'));
+    await tapUntilMarker(
+      tester,
+      find.text(name).first,
+      find.text('Transaction Details'),
+    );
     expect(find.text('Transaction Details'), findsWidgets);
     expect(find.text('Money Sent!'), findsWidgets);
     expect(find.text(name), findsOneWidget);

@@ -17,14 +17,20 @@ import 'test_credentials.dart';
 
 /// Sanitizes a test description into a filesystem-safe name (max 60 chars).
 String sanitizeName(String value) {
-  final cleaned = value.replaceAll(RegExp(r'[^\w]'), '_').replaceAll(RegExp(r'_+'), '_');
+  final cleaned = value
+      .replaceAll(RegExp(r'[^\w]'), '_')
+      .replaceAll(RegExp(r'_+'), '_');
   return cleaned.length > 60 ? cleaned.substring(0, 60) : cleaned;
 }
 
 /// Writes [bytes] to `<app cache>/screenshots/<name>.png` so CI can pull them
 /// with `adb exec-out run-as <pkg> cat`. Errors are swallowed — the screenshot
 /// must never mask the real test failure.
-Future<void> _saveScreenshot(WidgetTester tester, List<int> bytes, String name) async {
+Future<void> _saveScreenshot(
+  WidgetTester tester,
+  List<int> bytes,
+  String name,
+) async {
   final base = await getTemporaryDirectory();
   final dir = Directory('${base.path}/screenshots');
   await dir.create(recursive: true);
@@ -72,7 +78,8 @@ Future<void> captureScreenshot(WidgetTester tester, String name) async {
     var bytes = await _captureEngine();
     if (bytes == null || bytes.isEmpty) {
       try {
-        final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+        final binding =
+            IntegrationTestWidgetsFlutterBinding.ensureInitialized();
         await binding.convertFlutterSurfaceToImage();
         await tester.pump();
         final shot = await binding.takeScreenshot(name);
@@ -133,7 +140,10 @@ Future<void> pumpAndSettleSafe(
 /// virtual clock and may not wait wall-clock time in the live binding, so
 /// polling loops that need the app's async work (auth restore, Firestore)
 /// to actually progress should use this.
-Future<void> pumpReal(WidgetTester tester, [Duration d = const Duration(seconds: 1)]) async {
+Future<void> pumpReal(
+  WidgetTester tester, [
+  Duration d = const Duration(seconds: 1),
+]) async {
   await Future<void>.delayed(d);
   await tester.pump();
 }
@@ -191,6 +201,20 @@ Future<bool> waitForCheck(
   return false;
 }
 
+/// Polls (real time) until [finder] disappears (e.g. a modal sheet closes).
+/// Fails if it is still present after [seconds] seconds.
+Future<void> waitForGone(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (finder.evaluate().isEmpty) return;
+  }
+  fail('Timed out waiting for ${finder.toString()} to disappear');
+}
+
 /// Taps [tapTarget], then verifies [marker] appears. Retries the whole tap a
 /// few times because on-device taps can silently miss while overlays (SnackBars,
 /// the auto-hiding nav bar) are animating. Fails if [marker] never appears.
@@ -210,7 +234,9 @@ Future<void> tapUntilMarker(
       return;
     }
   }
-  fail('Timed out: ${tapTarget.toString()} did not reveal ${marker.toString()}');
+  fail(
+    'Timed out: ${tapTarget.toString()} did not reveal ${marker.toString()}',
+  );
 }
 
 /// Bounded scroll: drags the on-screen (active) scrollable until [finder] is
@@ -229,8 +255,7 @@ Future<bool> scrollUntilVisible(
     if (finder.evaluate().isEmpty) return false;
     try {
       final rect = tester.getRect(finder.first);
-      final size =
-          tester.view.physicalSize / tester.view.devicePixelRatio;
+      final size = tester.view.physicalSize / tester.view.devicePixelRatio;
       const margin = 24.0;
       return rect.center.dx >= margin &&
           rect.center.dx <= size.width - margin &&
@@ -276,10 +301,10 @@ Future<void> tapWhenVisible(
     if (finder.evaluate().isEmpty) continue;
     try {
       final rect = tester.getRect(finder.first);
-      final size =
-          tester.view.physicalSize / tester.view.devicePixelRatio;
+      final size = tester.view.physicalSize / tester.view.devicePixelRatio;
       const margin = 24.0;
-      final centerOnScreen = rect.center.dx >= margin &&
+      final centerOnScreen =
+          rect.center.dx >= margin &&
           rect.center.dx <= size.width - margin &&
           rect.center.dy >= margin &&
           rect.center.dy <= size.height - margin;
@@ -295,10 +320,7 @@ Future<void> tapWhenVisible(
 
 /// Returns true once the home screen ('Total Balance') is visible, polling up
 /// to [seconds] seconds of real time.
-Future<bool> waitForHome(
-  WidgetTester tester, {
-  int seconds = 120,
-}) async {
+Future<bool> waitForHome(WidgetTester tester, {int seconds = 120}) async {
   for (var i = 0; i < seconds; i++) {
     await pumpReal(tester);
     if (find.text('Total Balance').evaluate().isNotEmpty) return true;
@@ -635,7 +657,11 @@ Future<void> revealBottomNav(WidgetTester tester, IconData navIcon) async {
 /// is first built, which also happens when jumping straight to Settings).
 /// The marker is only accepted when it renders on the page itself — never the
 /// always-visible bottom-nav label.
-Future<void> tapNavTab(WidgetTester tester, IconData icon, String marker) async {
+Future<void> tapNavTab(
+  WidgetTester tester,
+  IconData icon,
+  String marker,
+) async {
   final navIcon = _navBarIcon(tester, icon);
   final markerFinder = find.text(marker);
   for (var attempt = 0; attempt < 3; attempt++) {
@@ -739,10 +765,7 @@ Future<void> swipeAndTap(
 
 /// Swipes a list item to reveal its Delete action and confirms the resulting
 /// "Delete" confirmation dialog.
-Future<void> swipeAndConfirmDelete(
-  WidgetTester tester,
-  String itemText,
-) async {
+Future<void> swipeAndConfirmDelete(WidgetTester tester, String itemText) async {
   await swipeAndTap(tester, itemText, 'Delete');
   await pumpAndSettleSafe(tester);
   final dlg = find.byType(AlertDialog);

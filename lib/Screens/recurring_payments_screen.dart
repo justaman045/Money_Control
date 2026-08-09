@@ -133,164 +133,192 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
             icon: const Icon(Icons.add_rounded, color: Colors.black),
           ),
         ),
-        body: AdaptivePanel(master: RefreshIndicator(
-          onRefresh: () => _txController.refreshData(),
-          color: const Color(0xFF00E5FF),
-          backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: Responsive.contentMaxWidth(context)),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.zero,
-                children: [
-                  // Monthly Summary Card
-                  _MonthlyCommitmentCard(
-                    isDark: isDark,
-                    textColor: textColor,
-                  ),
+        body: AdaptivePanel(
+          master: RefreshIndicator(
+            onRefresh: () => _txController.refreshData(),
+            color: const Color(0xFF00E5FF),
+            backgroundColor: isDark ? const Color(0xFF1E1E2C) : Colors.white,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: Responsive.contentMaxWidth(context),
+                ),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  children: [
+                    // Monthly Summary Card
+                    _MonthlyCommitmentCard(
+                      isDark: isDark,
+                      textColor: textColor,
+                    ),
 
-                  StreamBuilder<List<RecurringPayment>>(
-                    stream: _service.getPayments(),
-                    builder: (context, snapshot) {
-                      final offline =
-                          Get.isRegistered<ConnectivityController>() &&
-                          !ConnectivityController.to.isOnline.value;
-                      final waiting =
-                          snapshot.connectionState == ConnectionState.waiting;
-                      if (waiting && !_loadTimedOut && !offline) {
-                        return SizedBox(
-                          height: 400.h,
-                          child: const Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      if (snapshot.hasError) {
-                        return SizedBox(
-                          height: 400.h,
-                          child: Center(child: Text("Error: ${snapshot.error}")),
-                        );
-                      }
-                      if (!snapshot.hasData && waiting && (_loadTimedOut || offline)) {
-                        return SizedBox(
-                          height: 400.h,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.cloud_off_rounded,
-                                  size: 48,
-                                  color: textColor.withValues(alpha: 0.3),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  "Couldn't load subscriptions. Check your connection.",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: textColor.withValues(alpha: 0.6),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
+                    StreamBuilder<List<RecurringPayment>>(
+                      stream: _service.getPayments(),
+                      builder: (context, snapshot) {
+                        final offline =
+                            Get.isRegistered<ConnectivityController>() &&
+                            !ConnectivityController.to.isOnline.value;
+                        final waiting =
+                            snapshot.connectionState == ConnectionState.waiting;
+                        if (waiting && !_loadTimedOut && !offline) {
+                          return SizedBox(
+                            height: 400.h,
+                            child: const Center(
+                              child: CircularProgressIndicator(),
                             ),
-                          ),
-                        );
-                      }
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return SizedBox(
-                          height: 500.h,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                      padding: EdgeInsets.all(30.w),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: isDark
-                                            ? Colors.white.withValues(alpha: 0.05)
-                                            : AppColors.lightSurfaceCard,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(
-                                              0xFF00E5FF,
-                                            ).withValues(alpha: 0.1),
-                                            blurRadius: 30.w,
-                                            spreadRadius: 5.w,
-                                          ),
-                                        ],
-                                      ),
-                                      child: Icon(
-                                        Icons.subscriptions_outlined,
-                                        size: 60.sp,
-                                        color: textColor.withValues(alpha: 0.3),
-                                      ),
-                                    )
-                                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                                    .scale(
-                                      begin: const Offset(1, 1),
-                                      end: const Offset(1.05, 1.05),
-                                      duration: const Duration(seconds: 2),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return SizedBox(
+                            height: 400.h,
+                            child: Center(
+                              child: Text("Error: ${snapshot.error}"),
+                            ),
+                          );
+                        }
+                        if (!snapshot.hasData &&
+                            waiting &&
+                            (_loadTimedOut || offline)) {
+                          return SizedBox(
+                            height: 400.h,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.cloud_off_rounded,
+                                    size: 48,
+                                    color: textColor.withValues(alpha: 0.3),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    "Couldn't load subscriptions. Check your connection.",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: textColor.withValues(alpha: 0.6),
+                                      fontSize: 14,
                                     ),
-                                SizedBox(height: 24.h),
-                                Text(
-                                      "No subscriptions yet",
-                                      style: TextStyle(
-                                        color: textColor.withValues(alpha: 0.6),
-                                        fontSize: 16.sp,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    )
-                                    .animate()
-                                    .fadeIn(delay: 200.ms)
-                                    .slideY(begin: 0.2, end: 0),
-                                SizedBox(height: 8.h),
-                                Text(
-                                  "Track Netflix, Rent, Spotify, etc.",
-                                  style: TextStyle(
-                                    color: textColor.withValues(alpha: 0.4),
-                                    fontSize: 12.sp,
                                   ),
-                                ).animate().fadeIn(delay: 400.ms),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      }
+                          );
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          return SizedBox(
+                            height: 500.h,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                        padding: EdgeInsets.all(30.w),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isDark
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.05,
+                                                )
+                                              : AppColors.lightSurfaceCard,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(
+                                                0xFF00E5FF,
+                                              ).withValues(alpha: 0.1),
+                                              blurRadius: 30.w,
+                                              spreadRadius: 5.w,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Icon(
+                                          Icons.subscriptions_outlined,
+                                          size: 60.sp,
+                                          color: textColor.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                        ),
+                                      )
+                                      .animate(
+                                        onPlay: (c) => c.repeat(reverse: true),
+                                      )
+                                      .scale(
+                                        begin: const Offset(1, 1),
+                                        end: const Offset(1.05, 1.05),
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                  SizedBox(height: 24.h),
+                                  Text(
+                                        "No subscriptions yet",
+                                        style: TextStyle(
+                                          color: textColor.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      )
+                                      .animate()
+                                      .fadeIn(delay: 200.ms)
+                                      .slideY(begin: 0.2, end: 0),
+                                  SizedBox(height: 8.h),
+                                  Text(
+                                    "Track Netflix, Rent, Spotify, etc.",
+                                    style: TextStyle(
+                                      color: textColor.withValues(alpha: 0.4),
+                                      fontSize: 12.sp,
+                                    ),
+                                  ).animate().fadeIn(delay: 400.ms),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
 
-                      final list = snapshot.data!;
-                      return ListView.separated(
-                        padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 100.h),
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        itemCount: list.length,
-                        separatorBuilder: (c, i) => SizedBox(height: 16.h),
-                        itemBuilder: (context, index) {
-                          final item = list[index];
-                          return animatedItem(
-                                GestureDetector(
-                                  onTap: () {
-                                    final isSplit = Responsive.isTablet(context) && Responsive.isLandscape(context);
-                                    if (isSplit) {
-                                      setState(() => _selectedPayment = item);
-                                    } else {
-                                      Get.to(() => SubscriptionDetailsScreen(payment: item));
-                                    }
-                                  },
-                                  child: _buildCard(item, isDark, textColor, context),
+                        final list = snapshot.data!;
+                        return ListView.separated(
+                          padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 100.h),
+                          physics: const NeverScrollableScrollPhysics(),
+                          shrinkWrap: true,
+                          itemCount: list.length,
+                          separatorBuilder: (c, i) => SizedBox(height: 16.h),
+                          itemBuilder: (context, index) {
+                            final item = list[index];
+                            return animatedItem(
+                              GestureDetector(
+                                onTap: () {
+                                  final isSplit =
+                                      Responsive.isTablet(context) &&
+                                      Responsive.isLandscape(context);
+                                  if (isSplit) {
+                                    setState(() => _selectedPayment = item);
+                                  } else {
+                                    Get.to(
+                                      () => SubscriptionDetailsScreen(
+                                        payment: item,
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: _buildCard(
+                                  item,
+                                  isDark,
+                                  textColor,
+                                  context,
                                 ),
-                                index,
-                                staggerMs: 100,
-                              );
-                        },
-                      );
-                    },
-                  ),
-                ],
+                              ),
+                              index,
+                              staggerMs: 100,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-         ),
           detail: _selectedPayment != null
               ? SubscriptionDetailsScreen(payment: _selectedPayment!)
               : _buildDetailPlaceholder(),
@@ -427,7 +455,9 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                             fontWeight: FontWeight.bold,
                             color: textColor,
                             letterSpacing: 0.3,
-                            decoration: isPaused ? TextDecoration.lineThrough : null,
+                            decoration: isPaused
+                                ? TextDecoration.lineThrough
+                                : null,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -475,7 +505,9 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
                           : (isPending
                                 ? Colors.orange.withValues(alpha: 0.12)
                                 : (isPaid
-                                      ? const Color(0xFF00E676).withValues(alpha: 0.1)
+                                      ? const Color(
+                                          0xFF00E676,
+                                        ).withValues(alpha: 0.1)
                                       : textColor.withValues(alpha: 0.06))),
                       borderRadius: BorderRadius.circular(6.r),
                       border: isPaused
@@ -625,8 +657,9 @@ class _RecurringPaymentsScreenState extends State<RecurringPaymentsScreen> {
         payment: payment,
         categories: _txController.categories,
         isDark: isDark,
-        onSave: (p) =>
-            payment == null ? _service.addPayment(p) : _service.updatePayment(p),
+        onSave: (p) => payment == null
+            ? _service.addPayment(p)
+            : _service.updatePayment(p),
       ),
     );
   }
@@ -664,10 +697,12 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
   void initState() {
     super.initState();
     _titleCtrl = TextEditingController(text: widget.payment?.title);
-    _amountCtrl =
-        TextEditingController(text: widget.payment?.amount.toString());
+    _amountCtrl = TextEditingController(
+      text: widget.payment?.amount.toString(),
+    );
     _freq = widget.payment?.frequency ?? RecurringFrequency.monthly;
-    _nextPaymentDate = widget.payment?.nextDueDate ??
+    _nextPaymentDate =
+        widget.payment?.nextDueDate ??
         DateTime.now().add(const Duration(days: 30));
     _autoPay = widget.payment?.autoPay ?? false;
 
@@ -701,9 +736,14 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
 
   Future<void> _save() async {
     if (_formKey.currentState!.validate()) {
-      final amount = RecurringPayment.roundAmount(double.tryParse(_amountCtrl.text) ?? 0);
+      final amount = RecurringPayment.roundAmount(
+        double.tryParse(_amountCtrl.text) ?? 0,
+      );
       if (amount <= 0) {
-        ErrorHandler.showError("Enter a valid amount greater than 0", title: "Invalid Amount");
+        ErrorHandler.showError(
+          "Enter a valid amount greater than 0",
+          title: "Invalid Amount",
+        );
         return;
       }
       setState(() => _saving = true);
@@ -746,161 +786,156 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
       ),
       child: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.payment == null
-                  ? "New Subscription"
-                  : "Edit Subscription",
-              style: TextStyle(
-                fontSize: 20.sp,
-                fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.payment == null
+                    ? "New Subscription"
+                    : "Edit Subscription",
+                style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
               ),
-            ),
-            SizedBox(height: 20.h),
-            TextFormField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: "Name (e.g. Netflix)",
+              SizedBox(height: 20.h),
+              TextFormField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(
+                  labelText: "Name (e.g. Netflix)",
+                ),
+                validator: (v) => v!.isEmpty ? "Required" : null,
               ),
-              validator: (v) => v!.isEmpty ? "Required" : null,
-            ),
-            SizedBox(height: 16.h),
-            TextFormField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Amount"),
-              validator: (v) => v!.isEmpty ? "Required" : null,
-            ),
-            SizedBox(height: 16.h),
-
-            // Frequency
-            DropdownButtonFormField<RecurringFrequency>(
-              initialValue: _freq,
-              items: RecurringFrequency.values
-                  .map(
-                    (f) => DropdownMenuItem(
-                      value: f,
-                      child: Text(f.name.capitalizeFirst ?? f.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _freq = v!),
-              decoration: const InputDecoration(labelText: "Frequency"),
-            ),
-
-            SizedBox(height: 16.h),
-
-            // Category Dropdown
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              items: _sortedCategories
-                  .map(
-                    (c) => DropdownMenuItem(value: c, child: Text(c)),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _category = v!),
-              decoration: const InputDecoration(labelText: "Category"),
-            ),
-
-            SizedBox(height: 16.h),
-
-            // Next Payment Date Picker
-            GestureDetector(
-              onTap: _pickNextPaymentDate,
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 12.w,
-                  vertical: 16.h,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "Next Payment: ${DateFormat('MMM dd, yyyy').format(_nextPaymentDate)}",
-                      style: TextStyle(fontSize: 16.sp),
-                    ),
-                    Icon(Icons.calendar_today, size: 20.sp),
-                  ],
-                ),
+              SizedBox(height: 16.h),
+              TextFormField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Amount"),
+                validator: (v) => v!.isEmpty ? "Required" : null,
               ),
-            ),
+              SizedBox(height: 16.h),
 
-            SizedBox(height: 24.h),
-
-            // Auto-pay toggle
-            Material(
-              color: _autoPay
-                  ? const Color(0xFF00E5FF).withValues(alpha: 0.08)
-                  : textColor.withValues(alpha: 0.04),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12.r),
-                side: BorderSide(
-                  color: _autoPay
-                      ? const Color(0xFF00E5FF).withValues(alpha: 0.3)
-                      : textColor.withValues(alpha: 0.1),
-                ),
+              // Frequency
+              DropdownButtonFormField<RecurringFrequency>(
+                initialValue: _freq,
+                items: RecurringFrequency.values
+                    .map(
+                      (f) => DropdownMenuItem(
+                        value: f,
+                        child: Text(f.name.capitalizeFirst ?? f.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _freq = v!),
+                decoration: const InputDecoration(labelText: "Frequency"),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 12.w,
-                  vertical: 4.h,
-                ),
-                child: CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _autoPay,
-                  onChanged: (v) => setState(() => _autoPay = v ?? false),
-                  title: Text(
-                    "Auto-pay",
-                    style: TextStyle(
-                      fontSize: 15.sp,
-                      fontWeight: FontWeight.w600,
-                      color: textColor,
-                    ),
+
+              SizedBox(height: 16.h),
+
+              // Category Dropdown
+              DropdownButtonFormField<String>(
+                initialValue: _category,
+                items: _sortedCategories
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                    .toList(),
+                onChanged: (v) => setState(() => _category = v!),
+                decoration: const InputDecoration(labelText: "Category"),
+              ),
+
+              SizedBox(height: 16.h),
+
+              // Next Payment Date Picker
+              GestureDetector(
+                onTap: _pickNextPaymentDate,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 16.h,
                   ),
-                  subtitle: Text(
-                    _autoPay
-                        ? "When due, a transaction is created automatically."
-                        : "Remind me when due — I'll mark it paid manually.",
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: textColor.withValues(alpha: 0.6),
-                    ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(4.r),
                   ),
-                  secondary: Icon(
-                    _autoPay
-                        ? Icons.auto_awesome_rounded
-                        : Icons.notifications_active_outlined,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Next Payment: ${DateFormat('MMM dd, yyyy').format(_nextPaymentDate)}",
+                        style: TextStyle(fontSize: 16.sp),
+                      ),
+                      Icon(Icons.calendar_today, size: 20.sp),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(height: 24.h),
+
+              // Auto-pay toggle
+              Material(
+                color: _autoPay
+                    ? const Color(0xFF00E5FF).withValues(alpha: 0.08)
+                    : textColor.withValues(alpha: 0.04),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12.r),
+                  side: BorderSide(
                     color: _autoPay
-                        ? const Color(0xFF00B8D4)
-                        : Colors.orange,
-                    size: 22.sp,
+                        ? const Color(0xFF00E5FF).withValues(alpha: 0.3)
+                        : textColor.withValues(alpha: 0.1),
                   ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  activeColor: const Color(0xFF00B8D4),
-                  checkColor: Colors.black,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 4.h,
+                  ),
+                  child: CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _autoPay,
+                    onChanged: (v) => setState(() => _autoPay = v ?? false),
+                    title: Text(
+                      "Auto-pay",
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                        color: textColor,
+                      ),
+                    ),
+                    subtitle: Text(
+                      _autoPay
+                          ? "When due, a transaction is created automatically."
+                          : "Remind me when due — I'll mark it paid manually.",
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: textColor.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    secondary: Icon(
+                      _autoPay
+                          ? Icons.auto_awesome_rounded
+                          : Icons.notifications_active_outlined,
+                      color: _autoPay ? const Color(0xFF00B8D4) : Colors.orange,
+                      size: 22.sp,
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: const Color(0xFF00B8D4),
+                    checkColor: Colors.black,
+                  ),
                 ),
               ),
-            ),
 
-            SizedBox(height: 24.h),
+              SizedBox(height: 24.h),
 
-            SizedBox(
-              width: double.infinity,
-              height: 50.h,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                child: const Text("Save"),
+              SizedBox(
+                width: double.infinity,
+                height: 50.h,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  child: const Text("Save"),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -912,10 +947,7 @@ class _AddSubscriptionSheetState extends State<_AddSubscriptionSheet> {
 // first load instead of restarting from 0 every time the card re-enters the
 // viewport — the ListView otherwise destroys and recreates its State.
 class _MonthlyCommitmentCard extends StatefulWidget {
-  const _MonthlyCommitmentCard({
-    required this.isDark,
-    required this.textColor,
-  });
+  const _MonthlyCommitmentCard({required this.isDark, required this.textColor});
 
   final bool isDark;
   final Color textColor;

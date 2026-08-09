@@ -78,7 +78,7 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 # fail, the emulator process is presumed dead and all remaining files are
 # skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
 # and renders any file with no JSON part as an INTERRUPTED row, so the report
-# always reflects all 17 files, not just the ones that produced output.
+# always reflects all 19 files, not just the ones that produced output.
 flutter test integration_test -d emulator-5554 --no-uninstall \
   --dart-define=TEST_EMAIL=... --dart-define=TEST_PASSWORD=... \
   --file-reporter json:build/report/integration.json
@@ -113,7 +113,7 @@ CI (`.github/workflows/flutter_build.yml`): analyze → unit/widget test → int
 | `lib/l10n/` | ARB localization files (`app_en.arb` template) |
 | `lib/data/` | Challenge preset seed data |
 | `test/` | 9 unit/widget test files (inactivity_reminder, lent_money_model, recurring_payment_model, sms_category, upi_apps, upi_qr, wealth_data, wealth_math, widget) |
-| `integration_test/` | 17 integration tests — require a live Firebase backend and are run against emulator-5554 with `TEST_EMAIL`/`TEST_PASSWORD` dart-defines (see `test_credentials.dart`). `mainCommon(isTest: true)` only skips Crashlytics/notifications. Tests: analytics_insights, add_transaction, app_test, budget_categories, edit_profile, full_app_e2e, goals_challenges, lent_money_split_bill, login, login_valid, receive_transaction_e2e, search_transaction, settings, subscription_flow, subscription_screen, transaction_management, wealth_assets. Helpers in `test_helpers.dart`: `launchAndSignIn`, `tapNavTab` (auto-reveals the auto-hiding bottom bar), `handleSplashAndOnboarding`, `loginIfNeeded`, `createTransaction`, `waitForHome`. |
+| `integration_test/` | 19 integration tests — require a live Firebase backend and are run against emulator-5554 with `TEST_EMAIL`/`TEST_PASSWORD` dart-defines (see `test_credentials.dart`). `mainCommon(isTest: true)` only skips Crashlytics/notifications. Tests: add_transaction, ai_insights, analytics_reports, app_test, budget_categories, edit_profile, full_app_e2e_tabs, full_app_e2e_transaction, goals_challenges, lent_money_split_bill, login, login_valid, receive_transaction_e2e, search_transaction, settings, subscription_flow, subscription_screen, transaction_management, wealth_assets. Helpers in `test_helpers.dart`: `launchAndSignIn`, `tapNavTab` (auto-reveals the auto-hiding bottom bar), `handleSplashAndOnboarding`, `loginIfNeeded`, `createTransaction`, `waitForHome`, `waitForGone`. |
 
 ## Integration Test Gotchas
 

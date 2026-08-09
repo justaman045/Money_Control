@@ -6,104 +6,129 @@ import 'test_helpers.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgetsWithScreenshots('Goals (adaptive Pro) and Savings Challenges full flow', (
-    WidgetTester tester,
-  ) async {
-    await launchAndSignIn(tester);
-    final isPro = await probePro(tester);
+  testWidgetsWithScreenshots(
+    'Goals (adaptive Pro) and Savings Challenges full flow',
+    (WidgetTester tester) async {
+      await launchAndSignIn(tester);
+      final isPro = await probePro(tester);
 
-    // ── 1. Goals (pro-gated home icon) ──────────────────────────────────────
-    await tapUntilMarker(
-      tester,
-      find.byIcon(Icons.flag_outlined),
-      isPro ? find.text('Goals') : find.text('Monthly'),
-    );
-
-    if (isPro) {
-      await waitFor(tester, find.text('Goals'));
-      expect(find.text('Goals'), findsWidgets);
-
-      final goalName = uniqueName('Goal');
+      // ── 1. Goals (pro-gated home icon) ──────────────────────────────────────
       await tapUntilMarker(
         tester,
-        find.text('New Goal'),
-        find.widgetWithText(TextField, 'e.g. Emergency Fund, New iPhone'),
+        find.byIcon(Icons.flag_outlined),
+        isPro ? find.text('Goals') : find.text('Monthly'),
+      );
+
+      if (isPro) {
+        await waitFor(tester, find.text('Goals'));
+        expect(find.text('Goals'), findsWidgets);
+
+        final goalName = uniqueName('Goal');
+        await tapUntilMarker(
+          tester,
+          find.text('New Goal'),
+          find.widgetWithText(TextField, 'e.g. Emergency Fund, New iPhone'),
+        );
+
+        await tester.enterText(
+          find.widgetWithText(TextField, 'e.g. Emergency Fund, New iPhone'),
+          goalName,
+        );
+        await pumpReal(tester);
+        await tester.enterText(find.widgetWithText(TextField, '0.00'), '10000');
+        await pumpReal(tester);
+
+        FocusManager.instance.primaryFocus?.unfocus();
+        await pumpAndSettleSafe(tester);
+        await tapUntilMarker(
+          tester,
+          find.text('Create Goal'),
+          find.text(goalName),
+        );
+
+        // Back on the goals list; the new goal card shows 0% progress.
+        await waitFor(tester, find.text(goalName));
+        expect(find.text('0%'), findsWidgets);
+
+        // Long-press the goal card to delete it. The text alone may match a
+        // transient SnackBar, so wait for the actual card (GestureDetector).
+        final goalCard = find
+            .ancestor(
+              of: find.text(goalName),
+              matching: find.byType(GestureDetector),
+            )
+            .first;
+        await waitFor(tester, goalCard);
+        final gesture = await tester.startGesture(tester.getCenter(goalCard));
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        await gesture.up();
+        await pumpAndSettleSafe(tester);
+        await waitFor(tester, find.text('Delete Goal?'));
+        await tapWhenVisible(tester, find.text('Delete'));
+        await pumpReal(tester, const Duration(seconds: 3));
+        expect(find.text(goalName), findsNothing);
+
+        await backToHome(tester);
+      } else {
+        await assertUpgradeScreen(tester);
+      }
+
+      // ── 2. Savings Challenges (not gated) ───────────────────────────────────
+      // Make sure we are truly back on the home screen and no overlay (SnackBar
+      // from the goal deletion, etc.) is swallowing the AppBar tap. The emoji
+      // icon lives only on the home AppBar and the Challenges screen itself.
+      await waitFor(tester, find.text('Total Balance'));
+      await dismissDialogs(tester);
+      await tapUntilMarker(
+        tester,
+        find.byIcon(Icons.emoji_events_outlined).first,
+        find.text('Savings Challenges'),
+      );
+      expect(find.text('Active'), findsWidgets);
+      expect(find.text('Library'), findsWidgets);
+
+      final challengeName = uniqueName('Save');
+      await tapUntilMarker(
+        tester,
+        find.text('Custom'),
+        find.text('Custom Challenge'),
       );
 
       await tester.enterText(
-        find.widgetWithText(TextField, 'e.g. Emergency Fund, New iPhone'),
-        goalName,
+        find.widgetWithText(TextField, 'Challenge Name'),
+        challengeName,
       );
       await pumpReal(tester);
-      await tester.enterText(find.widgetWithText(TextField, '0.00'), '10000');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Or enter custom days'),
+        '14',
+      );
       await pumpReal(tester);
 
       FocusManager.instance.primaryFocus?.unfocus();
       await pumpAndSettleSafe(tester);
-      await tapUntilMarker(tester, find.text('Create Goal'), find.text(goalName));
+      await tapUntilMarker(
+        tester,
+        find.text('Start Challenge'),
+        find.text(challengeName),
+      );
 
-      // Back on the goals list; the new goal card shows 0% progress.
-      await waitFor(tester, find.text(goalName));
-      expect(find.text('0%'), findsWidgets);
+      // The custom challenge appears on the Active tab with days remaining.
+      expect(find.text(challengeName), findsWidgets);
+      expect(find.textContaining('d left'), findsWidgets);
 
-      // Long-press the goal card to delete it. The text alone may match a
-      // transient SnackBar, so wait for the actual card (GestureDetector).
-      final goalCard = find
-          .ancestor(of: find.text(goalName), matching: find.byType(GestureDetector))
+      // Delete it via the close button on the challenge's own card.
+      final nameRow = find
+          .ancestor(of: find.text(challengeName), matching: find.byType(Row))
           .first;
-      await waitFor(tester, goalCard);
-      final gesture = await tester.startGesture(tester.getCenter(goalCard));
-      await Future<void>.delayed(const Duration(milliseconds: 900));
-      await gesture.up();
-      await pumpAndSettleSafe(tester);
-      await waitFor(tester, find.text('Delete Goal?'));
-      await tapWhenVisible(tester, find.text('Delete'));
+      await tapWhenVisible(
+        tester,
+        find.descendant(of: nameRow, matching: find.byIcon(Icons.close)),
+      );
       await pumpReal(tester, const Duration(seconds: 3));
-      expect(find.text(goalName), findsNothing);
+      expect(find.text(challengeName), findsNothing);
 
       await backToHome(tester);
-    } else {
-      await assertUpgradeScreen(tester);
-    }
-
-    // ── 2. Savings Challenges (not gated) ───────────────────────────────────
-    await tapUntilMarker(tester, find.byIcon(Icons.emoji_events_outlined), find.text('Savings Challenges'));
-    expect(find.text('Active'), findsWidgets);
-    expect(find.text('Library'), findsWidgets);
-
-    final challengeName = uniqueName('Save');
-    await tapUntilMarker(tester, find.text('Custom'), find.text('Custom Challenge'));
-
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Challenge Name'),
-      challengeName,
-    );
-    await pumpReal(tester);
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Or enter custom days'),
-      '14',
-    );
-    await pumpReal(tester);
-
-    FocusManager.instance.primaryFocus?.unfocus();
-    await pumpAndSettleSafe(tester);
-    await tapUntilMarker(tester, find.text('Start Challenge'), find.text(challengeName));
-
-    // The custom challenge appears on the Active tab with days remaining.
-    expect(find.text(challengeName), findsWidgets);
-    expect(find.textContaining('d left'), findsWidgets);
-
-    // Delete it via the close button on the challenge's own card.
-    final nameRow = find
-        .ancestor(of: find.text(challengeName), matching: find.byType(Row))
-        .first;
-    await tapWhenVisible(
-      tester,
-      find.descendant(of: nameRow, matching: find.byIcon(Icons.close)),
-    );
-    await pumpReal(tester, const Duration(seconds: 3));
-    expect(find.text(challengeName), findsNothing);
-
-    await backToHome(tester);
-  });
+    },
+  );
 }

@@ -59,12 +59,14 @@ recover_device() {
 
 # Kills the emulator process and launches a fresh one. Host-side gfxstream/GL
 # state accumulates across app launches and deterministically killed the qemu
-# process at the second file (analytics_insights_test) in three consecutive CI
-# runs — a fresh qemu process resets all of it so every file runs as the first
-# app instance. Flags mirror the action's emulator-options in flutter_build.yml
-# (plus -no-snapshot for a deterministic cold boot). Only useful when a qemu
-# process actually exists to restart; on a truly dead emulator this can revive
-# it, so the caller can retry the current file after a full restart.
+# process in three consecutive CI runs — a fresh qemu process resets all of it
+# so every file runs as the first app instance. (The worst offenders were the
+# Analytics / AI Insights screens; those tests are split into short per-screen
+# files so no file renders the heavy charts long enough to hit the crash.) Flags
+# mirror the action's emulator-options in flutter_build.yml (plus -no-snapshot
+# for a deterministic cold boot). Only useful when a qemu process actually
+# exists to restart; on a truly dead emulator this can revive it, so the caller
+# can retry the current file after a full restart.
 restart_emulator() {
   echo "Restarting emulator (fresh qemu process)..."
   adb -s emulator-5554 emu kill 2>/dev/null || true
