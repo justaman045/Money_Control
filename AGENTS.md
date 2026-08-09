@@ -80,7 +80,11 @@ flutter gen-l10n                    # after editing ARB files in lib/l10n/ (l10n
 # software renderer and never printed a result) or the reporter file ended up
 # empty (the app never connected / the tool died before any output). If
 # recovery AND a full emulator restart both fail, the emulator process is
-# presumed dead and all remaining files are skipped fast. `generate_test_report.dart` globs integration_test/*_test.dart
+# presumed dead and all remaining files are skipped fast. The script runs under
+# `set -e`, so exit codes from `run_file` are captured with the
+# `cmd || RC=$?` idiom (NEVER a bare `cmd` + `RC=$?` line — a failing bare call
+# kills the whole script before the recovery branches run).
+# `generate_test_report.dart` globs integration_test/*_test.dart
 # and renders any file with no JSON part as an INTERRUPTED row, so the report
 # always reflects all 19 files, not just the ones that produced output.
 flutter test integration_test -d emulator-5554 --no-uninstall \

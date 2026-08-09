@@ -147,8 +147,8 @@ for f in integration_test/*_test.dart; do
   fi
   FIRST_FILE=0
   echo "=== Running $name ==="
-  run_file "$f" "$name"
-  RC=$?
+  RC=0
+  run_file "$f" "$name" || RC=$?
   if [ "$RC" -eq 0 ]; then
     PASS_COUNT=$((PASS_COUNT + 1))
   elif device_ok && { [ "$RC" = "124" ] || [ ! -s "build/report/parts/$name.json" ]; }; then
@@ -167,8 +167,8 @@ for f in integration_test/*_test.dart; do
     echo "FAIL: $name ($launch_reason — restarting emulator and retrying once)."
     if restart_emulator; then
       pull_screenshots
-      run_file "$f" "$name"
-      RC2=$?
+      RC2=0
+      run_file "$f" "$name" || RC2=$?
       if [ "$RC2" -eq 0 ]; then
         PASS_COUNT=$((PASS_COUNT + 1))
         echo "PASS on launch-retry: $name"
