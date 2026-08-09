@@ -215,6 +215,20 @@ Future<void> waitForGone(
   fail('Timed out waiting for ${finder.toString()} to disappear');
 }
 
+/// Polls (real time) until [finder] disappears, returning false instead of
+/// failing when [seconds] pass. Used to retry flaky sheet closes/saves.
+Future<bool> waitForGoneCheck(
+  WidgetTester tester,
+  Finder finder, {
+  int seconds = 30,
+}) async {
+  for (var i = 0; i < seconds; i++) {
+    await pumpReal(tester);
+    if (finder.evaluate().isEmpty) return true;
+  }
+  return false;
+}
+
 /// Taps [tapTarget], then verifies [marker] appears. Retries the whole tap a
 /// few times because on-device taps can silently miss while overlays (SnackBars,
 /// the auto-hiding nav bar) are animating. Fails if [marker] never appears.
@@ -224,9 +238,10 @@ Future<void> tapUntilMarker(
   Finder marker, {
   int attempts = 3,
   int markerSeconds = 12,
+  double tapMargin = 24,
 }) async {
   for (var i = 0; i < attempts; i++) {
-    await tapWhenVisible(tester, tapTarget);
+    await tapWhenVisible(tester, tapTarget, margin: tapMargin);
     await pumpAndSettleSafe(tester);
     await pumpReal(tester);
     if (await waitForCheck(tester, marker, seconds: markerSeconds)) {
@@ -250,13 +265,13 @@ Future<bool> scrollUntilVisible(
   Finder finder, {
   Offset scrollOffset = const Offset(0, -250),
   int maxDrags = 20,
+  double margin = 24,
 }) async {
   bool onScreen() {
     if (finder.evaluate().isEmpty) return false;
     try {
       final rect = tester.getRect(finder.first);
       final size = tester.view.physicalSize / tester.view.devicePixelRatio;
-      const margin = 24.0;
       return rect.center.dx >= margin &&
           rect.center.dx <= size.width - margin &&
           rect.center.dy >= margin &&
@@ -292,17 +307,22 @@ Future<void> tapWhenVisible(
   WidgetTester tester,
   Finder finder, {
   int seconds = 30,
+  double margin = 24,
 }) async {
   for (var i = 0; i < seconds; i++) {
     await pumpReal(tester);
-    final scrolled = await scrollUntilVisible(tester, finder, maxDrags: 2);
+    final scrolled = await scrollUntilVisible(
+      tester,
+      finder,
+      maxDrags: 2,
+      margin: margin,
+    );
     if (!scrolled) continue;
     await pumpReal(tester);
     if (finder.evaluate().isEmpty) continue;
     try {
       final rect = tester.getRect(finder.first);
       final size = tester.view.physicalSize / tester.view.devicePixelRatio;
-      const margin = 24.0;
       final centerOnScreen =
           rect.center.dx >= margin &&
           rect.center.dx <= size.width - margin &&

@@ -79,10 +79,14 @@ void main() {
       // icon lives only on the home AppBar and the Challenges screen itself.
       await waitFor(tester, find.text('Total Balance'));
       await dismissDialogs(tester);
+      // The challenges button is the rightmost AppBar action; on the narrow
+      // CI emulator its center sits within 24px of the screen edge, which the
+      // default tap margin rejects. Use a tighter margin for this tap.
       await tapUntilMarker(
         tester,
         find.byIcon(Icons.emoji_events_outlined).first,
         find.text('Savings Challenges'),
+        tapMargin: 8,
       );
       expect(find.text('Active'), findsWidgets);
       expect(find.text('Library'), findsWidgets);

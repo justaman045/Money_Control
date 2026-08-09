@@ -48,9 +48,22 @@ void main() {
 
     // Save — then wait for the sheet to actually close (its 'New Subscription'
     // title matches the still-open sheet's TextField, so it can't be the
-    // success marker) and the new card to render with its amount.
-    await tapWhenVisible(tester, find.text('Save'));
-    await waitForGone(tester, find.text('New Subscription'));
+    // success marker) and the new card to render with its amount. Dismiss the
+    // keyboard first so the sheet's height is stable under the tap, then retry
+    // the save if the sheet lingers (the Firestore write can briefly stall).
+    FocusManager.instance.primaryFocus?.unfocus();
+    await pumpAndSettleSafe(tester);
+    var saved = false;
+    for (var attempt = 0; attempt < 3 && !saved; attempt++) {
+      await tapWhenVisible(tester, find.text('Save'));
+      saved = await waitForGoneCheck(
+        tester,
+        find.text('New Subscription'),
+        seconds: 12,
+      );
+      if (!saved) await pumpReal(tester, const Duration(seconds: 2));
+    }
+    expect(find.text('New Subscription'), findsNothing);
     await waitFor(tester, find.text('₹499'));
 
     // Verify Creation
