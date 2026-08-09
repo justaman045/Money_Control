@@ -11,19 +11,15 @@ void main() {
   ) async {
     await launchAndSignIn(tester);
 
-    // Seed one expense + one income so the insights engine has data to
-    // aggregate (it shows a no-data message otherwise).
+    // Seed one expense so the insights engine has data to aggregate (it shows a
+    // no-data message otherwise). A single expense is enough for the forecast
+    // and category insights — the income seeding step was dropped because it
+    // pushed the file's runtime onto the emulator's ~7m software-GL crash line.
     await createTransaction(
       tester,
       receive: false,
       name: uniqueName('Ana'),
       amount: '500',
-    );
-    await createTransaction(
-      tester,
-      receive: true,
-      name: uniqueName('Ana'),
-      amount: '1200',
     );
 
     // ── 1. AI Insights tab ──────────────────────────────────────────────────
