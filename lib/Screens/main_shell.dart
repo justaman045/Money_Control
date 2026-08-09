@@ -253,17 +253,25 @@ class _MainShellState extends State<MainShell> {
             fit: StackFit.expand,
             children: List.generate(_visited, (i) {
               final active = i == _index;
+              // Hidden pages are wrapped in Offstage (not just translated off-
+              // screen) so they keep their state but stop rasterizing every
+              // frame. Previously the heavy AI Insights/Analytics pages stayed
+              // composited indefinitely after a visit, which melted the
+              // emulator's software renderer (qemu segfault ~6 min in).
               return IgnorePointer(
                 ignoring: !active,
                 child: ExcludeSemantics(
                   excluding: !active,
-                  child: AnimatedSlide(
-                    offset: Offset(active ? 0 : (i < _index ? -1 : 1), 0),
-                    duration: PerformanceController.to.liteMode.value
-                        ? Duration.zero
-                        : const Duration(milliseconds: 320),
-                    curve: Curves.easeOutCubic,
-                    child: _page(i),
+                  child: Offstage(
+                    offstage: !active,
+                    child: AnimatedSlide(
+                      offset: Offset(active ? 0 : (i < _index ? -1 : 1), 0),
+                      duration: PerformanceController.to.liteMode.value
+                          ? Duration.zero
+                          : const Duration(milliseconds: 320),
+                      curve: Curves.easeOutCubic,
+                      child: _page(i),
+                    ),
                   ),
                 ),
               );
