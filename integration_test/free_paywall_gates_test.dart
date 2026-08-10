@@ -36,6 +36,11 @@ void main() {
     await popScreen(tester); // back to General
     await waitFor(tester, find.text('Manage Categories'));
 
+    // Pop back to the Settings root so the bottom nav bar is reachable again
+    // (tapNavTab needs it to switch tabs — the General subpage has none).
+    await popScreen(tester); // General → Settings root
+    await waitFor(tester, find.text('Data & Support'));
+
     // NOTE: the SMS Import gate (Settings → Automation) is intentionally NOT
     // covered here — SmsImportScreen requests READ_SMS in initState, which pops
     // an un-dismissable Android system dialog on the CI emulator.

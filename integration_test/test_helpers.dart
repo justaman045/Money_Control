@@ -10,13 +10,63 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:get/get.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:money_control/Components/bottom_nav_bar.dart';
+import 'package:money_control/firebase_options.dart';
 import 'package:money_control/main.dart' as app;
 import 'package:money_control/Services/performance_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'test_credentials.dart';
+
+/// The 26 per-asset-type subcollections under `users/{email}/` (matches
+/// firestore.rules). Sweep tests add/delete entries across these; a crashed
+/// run can leave leftovers that break the '1 item' assertions, so they are
+/// wiped before each file.
+const List<String> _wealthSubcollections = [
+  'fd_accounts',
+  'ppf_accounts',
+  'post_office_schemes',
+  'bonds',
+  'chit_funds',
+  'stock_holdings',
+  'sip_holdings',
+  'etf_holdings',
+  'foreign_stocks',
+  'startup_investments',
+  'pf_accounts',
+  'vpf_accounts',
+  'nps_accounts',
+  'gold_holdings',
+  'sgb_holdings',
+  'jewelry_items',
+  'crypto_holdings',
+  'reit_holdings',
+  'p2p_loans',
+  'agri_land',
+  'properties',
+  'vehicles',
+  'insurance_policies',
+  'business_assets',
+  'bnpl_entries',
+  'credit_cards',
+];
+
+/// Data collections the integration suite mutates that can accumulate across
+/// files/runs and skew assertions (leftover budgets, goals, loans, … from a
+/// crashed file). The 150-txn/month free cap makes `transactions` the critical
+/// one — an account that ever reaches it can no longer save transactions.
+const List<String> _dataSubcollections = [
+  'transactions',
+  'categories',
+  'budgets',
+  'goals',
+  'loans',
+  'recurring_payments',
+  'lent_money',
+  'challenges',
+];
 
 /// Sanitizes a test description into a filesystem-safe name (max 60 chars).
 String sanitizeName(String value) {
@@ -428,6 +478,15 @@ Future<void> ensureAccountState(
   WidgetTester tester,
   TestAccount account,
 ) async {
+  // Wipe any data this account accumulated in earlier files/runs (see
+  // clearAccountData). The app is subscribed via streams, so home updates to a
+  // clean slate before the test body starts.
+  final currentEmail = FirebaseAuth.instance.currentUser?.email;
+  if (currentEmail != null) {
+    await clearAccountData(currentEmail);
+    await pumpReal(tester);
+  }
+
   if (account == TestAccount.pro) {
     if (!(await probePro(tester))) {
       fail(
@@ -465,6 +524,11 @@ Future<void> launchAndSignIn(
   WidgetTester tester, {
   TestAccount account = TestAccount.free,
 }) async {
+  // Data hygiene: wipe whatever the previous file/run left behind so the app
+  // never renders the accumulated backlog (the free 150-txn cap + stale wealth
+  // entries made the suite flaky and could stall the app before the harness
+  // connected). Runs before mainCommon so the app never sees the backlog.
+  await resetTestData();
   await app.mainCommon(isTest: true);
   // Account isolation: the app persists the last session across files
   // (--no-uninstall), so if the previous file signed in as a different
@@ -496,6 +560,68 @@ Future<void> launchAndSignIn(
     );
   }
   await ensureAccountState(tester, account);
+}
+
+/// Deletes every doc in `users/{email}/{path}` (owner delete is allowed by
+/// firestore.rules). Errors are swallowed so a cleanup failure never masks the
+/// real test result.
+Future<void> _clearSubcollection(String email, String path) async {
+  try {
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(email)
+        .collection(path)
+        .get();
+    if (snap.docs.isEmpty) return;
+    for (var i = 0; i < snap.docs.length; i += 400) {
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snap.docs.skip(i).take(400)) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
+  } catch (e) {
+    debugPrint('clearAccountData($path) error: $e');
+  }
+}
+
+/// Wipes all test data for [email]: transactions (the free 150-txn/month cap
+/// makes accumulated data a hard blocker) plus the wealth + feature
+/// subcollections so a crashed earlier run can never skew later files.
+Future<void> clearAccountData(String email) async {
+  for (final path in _dataSubcollections) {
+    await _clearSubcollection(email, path);
+  }
+  for (final path in _wealthSubcollections) {
+    await _clearSubcollection(email, path);
+  }
+}
+
+/// Cleans the account whose session persisted on the device from the previous
+/// file/run, BEFORE the app launches. Each file launches the app afresh
+/// (--no-uninstall), so the app would otherwise render the whole accumulated
+/// backlog at startup — the free account's ~150 transactions made the first
+/// render slow and (on the pro account) could stall the app before the test
+/// harness ever connected.
+Future<void> resetTestData() async {
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+  // The persisted session restores asynchronously after Firebase init — poll
+  // currentUser for a short window. If no session restores, nothing to clean.
+  User? restored;
+  for (var i = 0; i < 15 && restored == null; i++) {
+    restored = FirebaseAuth.instance.currentUser;
+    if (restored == null) {
+      await Future.delayed(const Duration(seconds: 1));
+    }
+  }
+  final email = restored?.email;
+  if (email != null) {
+    await clearAccountData(email);
+  }
 }
 
 /// Waits until [GetX] controller is registered, so tests can safely

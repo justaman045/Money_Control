@@ -59,10 +59,23 @@ class ThemeController extends GetxController {
 
   ThemeMode get themeMode => currentTheme.value;
   StreamSubscription<DocumentSnapshot>? _themeSubscription;
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // Re-bind the theme stream to the currently signed-in user on every auth
+    // change (sign-out + sign-in as a different account must not keep the old
+    // account's theme stream alive).
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      _listenToThemeChanges();
+    });
+  }
 
   @override
   void onClose() {
     _themeSubscription?.cancel();
+    _authSub?.cancel();
     super.onClose();
   }
 
@@ -92,6 +105,8 @@ class ThemeController extends GetxController {
   }
 
   void _listenToThemeChanges() {
+    _themeSubscription?.cancel();
+    _themeSubscription = null;
     final user = FirebaseAuth.instance.currentUser;
     if (user != null && user.email != null) {
       if (kIsWeb) {

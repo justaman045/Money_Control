@@ -55,7 +55,16 @@ class SubscriptionController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    checkSubscriptionStatus();
+    // Re-bind to the currently signed-in user on every auth change (sign-out +
+    // sign-in as a different account on the same device). checkSubscriptionStatus
+    // cancels the old doc subscription before opening the new one, so a stale
+    // session can never keep streaming another account's subscription doc.
+    _authSub = _auth.authStateChanges().listen((user) {
+      checkSubscriptionStatus();
+    });
+    if (_auth.currentUser != null) {
+      checkSubscriptionStatus();
+    }
   }
 
   @override
@@ -103,17 +112,6 @@ class SubscriptionController extends GetxController {
       subscriptionStatus.value = SubscriptionStatus.free;
       isAdmin.value = false;
       expiryDate.value = null;
-      _authSub = _auth.authStateChanges().listen((user) {
-        if (user != null) {
-          _authSub?.cancel();
-          _authSub = null;
-          checkSubscriptionStatus();
-        } else {
-          subscriptionStatus.value = SubscriptionStatus.free;
-          isAdmin.value = false;
-          expiryDate.value = null;
-        }
-      });
     }
   }
 
