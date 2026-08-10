@@ -38,7 +38,10 @@ service cloud.firestore {
     // spoofing. Trial end may not be pushed unreasonably far into the future.
     // 'pro' status can only be claimed via a recorded Google Play purchase
     // (true purchase verification requires a Cloud Function; this closes the
-    // naive "write subscriptionStatus: pro" self-grant hole).
+    // naive "write subscriptionStatus: pro" self-grant hole). The parallel
+    // `isPro` flag is also gated: it may only be set true alongside a valid
+    // pro claim (closing the "write isPro: true" self-grant hole), while the
+    // app's own cancel/expire writes of `isPro: false` stay allowed.
     function isOwnerUpdate(userEmail) {
       let affected = request.resource.data.diff(resource.data).affectedKeys();
       let d = request.resource.data;
@@ -50,7 +53,8 @@ service cloud.firestore {
               || (d.subscriptionStatus == 'pro'
                   ? validProClaim(d)
                   : (d.subscriptionStatus == 'pending'
-                      || d.subscriptionStatus == 'free')));
+                      || d.subscriptionStatus == 'free')))
+          && (!affected.hasAny(['isPro']) || d.isPro == false || validProClaim(d));
     }
 
     // Owner records the referral code they applied to their own profile.
@@ -100,6 +104,9 @@ service cloud.firestore {
           && (!('subscriptionStatus' in request.resource.data)
               || request.resource.data.subscriptionStatus == 'free'
               || request.resource.data.subscriptionStatus == 'pending'
+              || validProClaim(request.resource.data))
+          && (!('isPro' in request.resource.data)
+              || request.resource.data.isPro == false
               || validProClaim(request.resource.data));
       allow update: if isOwnerUpdate(userEmail)
           || isReferralApplication(userEmail)

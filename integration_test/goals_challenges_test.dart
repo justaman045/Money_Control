@@ -9,7 +9,7 @@ void main() {
   testWidgetsWithScreenshots(
     'Goals (adaptive Pro) and Savings Challenges full flow',
     (WidgetTester tester) async {
-      await launchAndSignIn(tester);
+      await launchAndSignIn(tester, account: TestAccount.pro);
       final isPro = await probePro(tester);
 
       // ── 1. Goals (pro-gated home icon) ──────────────────────────────────────

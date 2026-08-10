@@ -905,15 +905,23 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           if (!Get.isRegistered<IapService>()) return const SizedBox.shrink();
           final loading = Get.find<IapService>().isLoading.value;
           final ctrl = SubscriptionController.to;
+          // Trial is opt-in: a never-used, non-Pro user starts it from this
+          // button (startTrial() grants 7 days). Everyone else sees the
+          // subscribe CTA (IAP purchase).
+          final canStartTrial = !ctrl.trialUsed.value && !ctrl.isPro && !ctrl.isPending;
           final trialDays = ctrl.trialEndDate.value != null
               ? ctrl.trialEndDate.value!.difference(DateTime.now()).inDays.clamp(1, 30)
               : (ctrl.trialUsed.value ? 0 : 7);
-          final label = ctrl.trialUsed.value ? "Subscribe Now" : "Start $trialDays-Day Free Trial";
+          final label = canStartTrial
+              ? "Start $trialDays-Day Free Trial"
+              : "Subscribe Now";
           return SizedBox(
             width: double.infinity,
             height: 56.h,
             child: ElevatedButton(
-              onPressed: loading ? null : _buySubscription,
+              onPressed: loading
+                  ? null
+                  : (canStartTrial ? ctrl.startTrial : _buySubscription),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.cyanAccent,
                 foregroundColor: Colors.black,

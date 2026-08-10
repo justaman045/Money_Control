@@ -9,7 +9,7 @@ void main() {
   testWidgetsWithScreenshots('Category budgets (adaptive Pro) and category management', (
     WidgetTester tester,
   ) async {
-    await launchAndSignIn(tester);
+    await launchAndSignIn(tester, account: TestAccount.pro);
     final isPro = await probePro(tester);
 
     // ── 1. Navigate: Settings → General ─────────────────────────────────────

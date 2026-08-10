@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 import 'package:integration_test/integration_test.dart';
@@ -350,11 +351,22 @@ Future<bool> waitForHome(WidgetTester tester, {int seconds = 120}) async {
   return find.text('Total Balance').evaluate().isNotEmpty;
 }
 
+/// Which CI test account a file runs against. Free files exercise the paywall/
+/// gates + free features; pro files exercise the Pro feature flows against a
+/// genuinely-subscribed account (configured out-of-band in the Firebase
+/// console). The two suites must never share an account.
+enum TestAccount { free, pro }
+
 /// Signs in with the test account when the login screen is showing. Returns
 /// true if home was reached. Safe to call when already signed in (no-op).
 /// Retries the sign-in a few times because the emulator's network to Firebase
 /// can be slow/flaky.
-Future<bool> loginIfNeeded(WidgetTester tester) async {
+Future<bool> loginIfNeeded(
+  WidgetTester tester, {
+  TestAccount account = TestAccount.free,
+}) async {
+  final email = account == TestAccount.pro ? kProTestEmail : kTestEmail;
+  final password = account == TestAccount.pro ? kProTestPassword : kTestPassword;
   if (find.text('Total Balance').evaluate().isNotEmpty) return true;
 
   // The login screen can lag the splash walkthrough on slow boots — poll for
@@ -381,9 +393,9 @@ Future<bool> loginIfNeeded(WidgetTester tester) async {
 
   final loginButton = find.text('Sign In');
   for (var attempt = 0; attempt < 3; attempt++) {
-    await tester.enterText(emailField, kTestEmail);
+    await tester.enterText(emailField, email);
     await pumpReal(tester);
-    await tester.enterText(passwordField, kTestPassword);
+    await tester.enterText(passwordField, password);
     await pumpReal(tester);
 
     // Dismiss the keyboard so the Sign In button is not covered on the
@@ -400,11 +412,69 @@ Future<bool> loginIfNeeded(WidgetTester tester) async {
   return false;
 }
 
+/// Makes the signed-in account's subscription state deterministic, so tests
+/// never depend on out-of-band state drifting between runs.
+///
+/// - Free account: force-resets the doc to Free (subscriptionStatus:'free',
+///   isPro:false, past-dated trialEndDate). All three fields are rule-legal
+///   owner writes, and with the opt-in-trial change login never re-grants a
+///   trial, so the account stays Free for the whole file. Fails loudly if the
+///   account still reports Pro afterward.
+/// - Pro account: verifies it is genuinely Pro (configured in the Firebase
+///   console with subscriptionStatus:'pro' + far-future expiryDate) and fails
+///   loudly with an actionable message if not — so a lapsed/misconfigured Pro
+///   account can never silently skip the Pro feature flows.
+Future<void> ensureAccountState(
+  WidgetTester tester,
+  TestAccount account,
+) async {
+  if (account == TestAccount.pro) {
+    if (!(await probePro(tester))) {
+      fail(
+        'PRO_TEST_EMAIL ($kProTestEmail) does not report Pro. Configure it in '
+        'the Firebase console: subscriptionStatus="pro" + a far-future '
+        'expiryDate (and optionally isPro=true).',
+      );
+    }
+    return;
+  }
+
+  final email = FirebaseAuth.instance.currentUser?.email;
+  if (email != null) {
+    await FirebaseFirestore.instance.collection('users').doc(email).set({
+      'subscriptionStatus': 'free',
+      'isPro': false,
+      'trialEndDate': Timestamp.fromDate(
+        DateTime.now().subtract(const Duration(seconds: 1)),
+      ),
+    }, SetOptions(merge: true));
+  }
+  await pumpReal(tester);
+  if (await probePro(tester)) {
+    fail(
+      'Free test account ($email) still reports Pro after the forced reset. '
+      'trialEndDate/subscriptionStatus/isPro should all force Free.',
+    );
+  }
+}
+
 /// Launches the app and brings it to the home screen, tapping through splash/
 /// onboarding and signing in when needed. Fails the test if home is not
 /// reached (so failures point at login/onboarding, not later finders).
-Future<void> launchAndSignIn(WidgetTester tester) async {
+Future<void> launchAndSignIn(
+  WidgetTester tester, {
+  TestAccount account = TestAccount.free,
+}) async {
   await app.mainCommon(isTest: true);
+  // Account isolation: the app persists the last session across files
+  // (--no-uninstall), so if the previous file signed in as a different
+  // account, sign out first so this file uses its own account.
+  final expected = account == TestAccount.pro ? kProTestEmail : kTestEmail;
+  final current = FirebaseAuth.instance.currentUser?.email;
+  if (current != null && current != expected) {
+    await FirebaseAuth.instance.signOut();
+    await pumpAndSettleSafe(tester, timeout: const Duration(seconds: 5));
+  }
   await pumpAndSettleSafe(tester, timeout: const Duration(seconds: 5));
   // The CI emulator's software GL stack (swiftshader) segfaults after ~2m of
   // the AI Insights screen's heavy blurred cards. Force lite mode for every
@@ -415,7 +485,7 @@ Future<void> launchAndSignIn(WidgetTester tester) async {
   }
   await handleSplashAndOnboarding(tester);
   await pumpAndSettleSafe(tester);
-  await loginIfNeeded(tester);
+  await loginIfNeeded(tester, account: account);
   final reachedHome = await waitForHome(tester);
   if (!reachedHome) {
     final user = FirebaseAuth.instance.currentUser;
@@ -425,6 +495,7 @@ Future<void> launchAndSignIn(WidgetTester tester) async {
       'uid=${user?.uid}',
     );
   }
+  await ensureAccountState(tester, account);
 }
 
 /// Waits until [GetX] controller is registered, so tests can safely
@@ -858,4 +929,32 @@ Future<void> createAssetEntry(
   await tapWhenVisible(tester, find.text('Save'));
   await pumpAndSettleSafe(tester);
   await pumpReal(tester, const Duration(seconds: 3));
+}
+
+/// Full add-verify-delete round trip for a generic AssetDetailScreen entry:
+/// scrolls to the asset card, opens its detail screen, adds an entry through
+/// the sheet, waits for the "1 item" count (the reliable creation marker),
+/// deletes it via the delete icon + confirm dialog, waits for the empty state,
+/// and pops back to the wealth grid.
+Future<void> sweepAssetEntry(
+  WidgetTester tester, {
+  required String cardTitle,
+  required String addLabel,
+  required Map<String, String> fieldValues,
+  required String emptyMessage,
+}) async {
+  await scrollUntilVisible(tester, find.text(cardTitle));
+  await pumpReal(tester);
+  await tapUntilMarker(tester, find.text(cardTitle), find.text(addLabel));
+  await tapWhenVisible(tester, find.text(addLabel));
+  await createAssetEntry(
+    tester,
+    sheetTitle: addLabel,
+    fieldValues: fieldValues,
+  );
+  await waitFor(tester, find.text('1 item'));
+  expect(find.text('1 item'), findsWidgets);
+  await deleteCurrentEntry(tester);
+  await waitFor(tester, find.text(emptyMessage));
+  await popScreen(tester);
 }

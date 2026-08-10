@@ -131,9 +131,12 @@ class SubscriptionController extends GetxController {
             newStatus = SubscriptionStatus.pro;
           } else if (data.containsKey('subscriptionStatus')) {
             newStatus = _parseStatus((data['subscriptionStatus'] as String?) ?? '');
-          } else if (data.containsKey('isPro') && data['isPro'] == true) {
-            newStatus = SubscriptionStatus.pro;
           }
+          // NOTE: a bare `isPro: true` is deliberately NOT honored here. The
+          // field is cosmetic/legacy (written alongside subscriptionStatus by
+          // approveUpgrade / Google Play activation); trusting it alone would
+          // let any user self-grant Pro by writing the flag directly (rules
+          // gate subscriptionStatus, but not isPro).
 
           if (data.containsKey('planType')) {
             planType.value = data['planType'] as String? ?? '';
@@ -175,23 +178,30 @@ class SubscriptionController extends GetxController {
   }
 
   void _handleTrialLogic(Map<String, dynamic> data, String email) {
-    if (!data.containsKey('trialEndDate')) {
-      final isReferred = data.containsKey('referredBy') && data['referredBy'] != null;
-      final trialDays = isReferred ? 30 : 7;
-      final trialEnd = DateTime.now().add(Duration(days: trialDays));
-      _firestore.collection('users').doc(email).set({
+    // Trial is opt-in only — see startTrial(). Never auto-granted on login:
+    // the free trial must be explicitly started from the subscription screen,
+    // so a brand-new account stays Free until the user taps "Start Free Trial".
+    trialUsed.value = data.containsKey('trialEndDate');
+    final end = (data['trialEndDate'] as Timestamp?)?.toDate();
+    trialEndDate.value = (end != null && DateTime.now().isBefore(end)) ? end : null;
+  }
+
+  /// Starts the opt-in free trial (7 days). Only callable from the trial CTA on
+  /// the subscription screen; login never grants Pro on its own. The owner-write
+  /// of `trialEndDate` is rule-compliant (validTrialCap caps it at 45 days).
+  Future<void> startTrial() async {
+    final email = _userEmail;
+    if (email == null || isPro) return;
+    try {
+      final trialEnd = DateTime.now().add(const Duration(days: 7));
+      await _firestore.collection('users').doc(email).set({
         'trialEndDate': Timestamp.fromDate(trialEnd),
-      }, SetOptions(merge: true)).then((_) {
-        trialEndDate.value = trialEnd;
-        trialUsed.value = true;
-      }).catchError((e) {
-        debugPrint('Failed to save trial end date: $e');
-        ErrorHandler.showError("Failed to activate trial. Please try again.");
-      });
-    } else {
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 30));
+      trialEndDate.value = trialEnd;
       trialUsed.value = true;
-      final end = (data['trialEndDate'] as Timestamp?)?.toDate();
-      trialEndDate.value = (end != null && DateTime.now().isBefore(end)) ? end : null;
+    } catch (e) {
+      debugPrint('startTrial error: $e');
+      ErrorHandler.showError("Failed to start trial. Please try again.");
     }
   }
 

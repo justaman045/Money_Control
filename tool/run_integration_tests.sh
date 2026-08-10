@@ -101,12 +101,30 @@ restart_emulator() {
   return 1
 }
 
+# Test files that exercise Pro feature flows must run against the PRO account
+# (PRO_TEST_EMAIL/PRO_TEST_PASSWORD); everything else runs against the FREE
+# account (TEST_EMAIL/TEST_PASSWORD). The two accounts are never shared — the
+# free account is force-reset by the harness, the pro account is configured
+# out-of-band in the Firebase console. Add new *pro* files to this list.
+PRO_FILES="subscription_flow_test budget_categories_test goals_challenges_test lent_money_split_bill_test subscription_screen_test pro_features_test"
+
 run_file() {
   local f="$1"
   local name="$2"
+  local email="$TEST_EMAIL"
+  local password="$TEST_PASSWORD"
+  if [ "${PRO_FILES#*"$name"}" != "$PRO_FILES" ]; then
+    email="$PRO_TEST_EMAIL"
+    password="$PRO_TEST_PASSWORD"
+    echo "=== $name: PRO account ($PRO_TEST_EMAIL)"
+  else
+    echo "=== $name: free account"
+  fi
   timeout 15m flutter test "$f" -d emulator-5554 --no-uninstall \
-    --dart-define=TEST_EMAIL="$TEST_EMAIL" \
-    --dart-define=TEST_PASSWORD="$TEST_PASSWORD" \
+    --dart-define=TEST_EMAIL="$email" \
+    --dart-define=TEST_PASSWORD="$password" \
+    --dart-define=PRO_TEST_EMAIL="$PRO_TEST_EMAIL" \
+    --dart-define=PRO_TEST_PASSWORD="$PRO_TEST_PASSWORD" \
     --file-reporter "json:build/report/parts/$name.json"
 }
 

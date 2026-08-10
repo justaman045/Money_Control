@@ -9,7 +9,7 @@ void main() {
   testWidgetsWithScreenshots('Lent Money Tracker + Split Bill (adaptive Pro)', (
     WidgetTester tester,
   ) async {
-    await launchAndSignIn(tester);
+    await launchAndSignIn(tester, account: TestAccount.pro);
     final isPro = await probePro(tester);
 
     // Pro-gated home icon.

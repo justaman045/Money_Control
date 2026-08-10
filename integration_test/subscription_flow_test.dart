@@ -10,7 +10,7 @@ void main() {
     WidgetTester tester,
   ) async {
     // 1-3. App Launch + Splash/Onboarding + Login
-    await launchAndSignIn(tester);
+    await launchAndSignIn(tester, account: TestAccount.pro);
 
     final isPro = await probePro(tester);
 
