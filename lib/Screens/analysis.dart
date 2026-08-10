@@ -596,16 +596,21 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
     return Container(
       padding: EdgeInsets.all(22.w),
       decoration: BoxDecoration(
-        // Vibrant "Mesh-like" Gradient
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF6C63FF), // Blurple
-            const Color(0xFF4834D4), // Deep Purple
-            Colors.deepPurple.shade900,
-          ],
-        ),
+        // Vibrant "Mesh-like" Gradient — the 3-color per-pixel interpolation is
+        // the single heaviest draw on this screen; the software-GL emulator
+        // segfaults while rasterizing it, so lite mode paints a flat color.
+        color: lite ? const Color(0xFF6C63FF) : null,
+        gradient: lite
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF6C63FF), // Blurple
+                  const Color(0xFF4834D4), // Deep Purple
+                  Colors.deepPurple.shade900,
+                ],
+              ),
         borderRadius: BorderRadius.circular(26.r),
         // The glow shadow is multi-pass blur under software rendering and
         // crashed the CI emulator's GL stack after ~2m of this screen — skip it
@@ -803,14 +808,16 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
             color: scheme.brightness == Brightness.dark
                 ? Colors.white.withValues(alpha: 0.08)
                 : AppColors.lightBorder),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.surface.withValues(alpha: 0.9),
-            scheme.surface.withValues(alpha: 0.6),
-          ],
-        ),
+        gradient: lite
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  scheme.surface.withValues(alpha: 0.9),
+                  scheme.surface.withValues(alpha: 0.6),
+                ],
+              ),
         boxShadow: lite
             ? null
             : [
@@ -934,14 +941,16 @@ class _AIInsightsScreenState extends State<AIInsightsScreen> {
             color: scheme.brightness == Brightness.dark
                 ? Colors.white.withValues(alpha: 0.08)
                 : AppColors.lightBorder),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.surface.withValues(alpha: 0.95),
-            scheme.surface.withValues(alpha: 0.8),
-          ],
-        ),
+        gradient: lite
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  scheme.surface.withValues(alpha: 0.95),
+                  scheme.surface.withValues(alpha: 0.8),
+                ],
+              ),
         boxShadow: lite
             ? null
             : [

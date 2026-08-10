@@ -9,7 +9,13 @@ void main() {
   testWidgetsWithScreenshots('AI Insights full flow', (
     WidgetTester tester,
   ) async {
+    final sw = Stopwatch()..start();
+    void mark(String step) {
+      debugPrint('AI_STEP ${sw.elapsed.inSeconds}s: $step');
+    }
+
     await launchAndSignIn(tester);
+    mark('signed in');
 
     // Seed one expense so the insights engine has data to aggregate (it shows a
     // no-data message otherwise). A single expense is enough for the forecast
@@ -21,17 +27,22 @@ void main() {
       name: uniqueName('Ana'),
       amount: '500',
     );
+    mark('transaction created');
 
     // ── 1. AI Insights tab ──────────────────────────────────────────────────
     await tapNavTab(tester, Icons.auto_awesome_outlined, 'AI Insights');
+    mark('AI tab tapped');
     await waitFor(tester, find.text('This Month Forecast'));
     expect(find.text('This Month Forecast'), findsWidgets);
+    mark('forecast visible');
 
     await scrollUntilVisible(tester, find.textContaining('Category Insights'));
     expect(find.textContaining('Category Insights'), findsWidgets);
+    mark('category insights visible');
 
     // ── 2. Back to the home tab ─────────────────────────────────────────────
     await tapNavTab(tester, Icons.grid_view_rounded, 'Total Balance');
     expect(find.text('Total Balance'), findsWidgets);
+    mark('back home');
   });
 }
