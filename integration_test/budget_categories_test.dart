@@ -12,6 +12,10 @@ void main() {
     await launchAndSignIn(tester, account: TestAccount.pro);
     final isPro = await probePro(tester);
 
+    // clearAccountData() wiped the categories collection; the Category Budgets
+    // screen renders one card per category, so seed one before navigating.
+    await seedCategory(name: 'Food', color: 0xFFFF7043);
+
     // ── 1. Navigate: Settings → General ─────────────────────────────────────
     await tapNavTab(tester, Icons.tune_rounded, 'Settings');
     await tapUntilMarker(tester, find.text('General'), find.text('Set Budget'));

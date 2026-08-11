@@ -12,6 +12,9 @@ void main() {
   testWidgetsWithScreenshots('Login Test: Invalid Credentials Prompt', (
     WidgetTester tester,
   ) async {
+    // resetTestData() initializes Firebase (mainCommon's ThemeController touches
+    // FirebaseAuth.instance immediately) and wipes the persisted account's data.
+    await resetTestData();
     await app.mainCommon(isTest: true);
     await pumpAndSettleSafe(tester);
 

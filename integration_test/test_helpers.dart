@@ -597,6 +597,31 @@ Future<void> clearAccountData(String email) async {
   }
 }
 
+/// Ensures the current user has at least one category. `clearAccountData()`
+/// wipes the `categories` collection, and screens that build their UI off it
+/// (e.g. Category Budgets renders one card per category) would show nothing.
+/// Idempotent — seed before navigating to any category-driven screen.
+Future<void> seedCategory({
+  required String name,
+  String? icon,
+  int? iconCode,
+  int? color,
+}) async {
+  final email = FirebaseAuth.instance.currentUser?.email;
+  if (email == null) return;
+  await FirebaseFirestore.instance
+      .collection('users')
+      .doc(email)
+      .collection('categories')
+      .doc(name)
+      .set({
+    'name': name,
+    'icon': icon,
+    'iconCode': iconCode,
+    'color': color,
+  });
+}
+
 /// Cleans the account whose session persisted on the device from the previous
 /// file/run, BEFORE the app launches. Each file launches the app afresh
 /// (--no-uninstall), so the app would otherwise render the whole accumulated
@@ -944,6 +969,9 @@ Future<void> popScreen(WidgetTester tester) async {
   }
   if (back.evaluate().isEmpty) {
     back = find.byIcon(Icons.arrow_back_ios_new);
+  }
+  if (back.evaluate().isEmpty) {
+    back = find.byIcon(Icons.arrow_back_ios);
   }
   if (back.evaluate().isEmpty) {
     back = find.byIcon(Icons.arrow_back);

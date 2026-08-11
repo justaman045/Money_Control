@@ -103,7 +103,7 @@ class LoanController extends GetxController {
         tenureMonths: tenureMonths,
         startDate: startDate,
       );
-      final docRef = await _repo.addLoan(loan);
+      await _repo.addLoan(loan);
       LocalCacheService.invalidate(_cacheKey);
       _fetchFromFirestore();
 
@@ -123,13 +123,10 @@ class LoanController extends GetxController {
           autoPay: false,
         );
         await _recurringService.addPayment(payment);
-        // Link recurring ID back to loan
-        await _repo.updateLoan(
-          LoanModel.fromMap(docRef.id, {
-            ...loan.toMap(),
-            'linkedRecurringPaymentId': recurringId,
-          }),
-        );
+        // Link recurring ID back to loan (no fromMap/toMap round-trip —
+        // loan.toMap() carries FieldValue.serverTimestamp() for createdAt,
+        // which fromMap would call .toDate() on and crash)
+        await _repo.updateLoan(loan.copyWith(linkedRecurringPaymentId: recurringId));
       }
       return true;
     } catch (e) {
